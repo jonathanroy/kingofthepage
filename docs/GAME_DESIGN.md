@@ -53,16 +53,18 @@ Every fence starts basic and can be upgraded by its owner. Each level increases 
 
 | Level | Chops to break | Cost           | Look                |
 | ----- | -------------- | -------------- | ------------------- |
-| 1     | 3              | 2 wood (build) | Twig fence          |
-| 2     | 6              | +3 wood        | Plank fence         |
-| 3     | 12             | +5 wood        | Log palisade        |
-| 4     | 20             | +8 wood        | Reinforced palisade |
-| 5     | 30             | +12 wood       | Stone wall          |
-| 6     | 42             | +17 wood       | Brick wall          |
-| 7     | 56             | +23 wood       | Fortified wall      |
-| 8     | 72             | +30 wood       | Iron-bound wall     |
-| 9     | 90             | +38 wood       | Steel wall          |
-| 10    | 110            | +47 wood       | King's wall         |
+| 1     | 30             | 2 wood (build) | Twig fence          |
+| 2     | 60             | +3 wood        | Plank fence         |
+| 3     | 120            | +5 wood        | Log palisade        |
+| 4     | 200            | +8 wood        | Reinforced palisade |
+| 5     | 300            | +12 wood       | Stone wall          |
+| 6     | 420            | +17 wood       | Brick wall          |
+| 7     | 560            | +23 wood       | Fortified wall      |
+| 8     | 720            | +30 wood       | Iron-bound wall     |
+| 9     | 900            | +38 wood       | Steel wall          |
+| 10    | 1100           | +47 wood       | King's wall         |
+
+Breaking walls is deliberately slow so land changes hands through sustained effort rather than quick raids.
 
 _(All values tunable.)_
 
@@ -75,9 +77,9 @@ _(All values tunable.)_
 | An ally's   | Per upgrade level | Confirmation dialog before the first chop; the ally gets a notification; the alliance continues |
 
 - Breaking any fence, **your own or someone else's**, returns **50% of the total wood invested** in it (build + upgrades), rounded down.
-- **Damage persists:** chops on a fence add up until it breaks, even across sessions and from different attackers. Nothing heals it except an upgrade.
-- **Upgrading repairs:** upgrading a fence resets its damage to zero, so spending wood is the defender's answer to an attack in progress.
-- **Repairing at max level:** a level-10 fence can't be upgraded, so the owner spends wood to repair it instead: 1 wood per 2 chops of damage, rounded up _(tunable)_. Repairs don't count as wood invested, so they don't raise the 50% refund.
+- **Damage persists:** chops on a fence add up until it breaks, even across sessions and from different attackers. Nothing heals it except the owner's repair.
+- **Repairing:** the owner can repair a damaged fence at any level for wood: 1 wood per 20 chops of damage, rounded up _(tunable)_. Repairs don't count as wood invested, so they don't raise the 50% refund.
+- **Upgrading needs full health:** a damaged fence must be repaired before it can be upgraded. The same action does both: it repairs a damaged fence, and upgrades an undamaged one.
 
 ### Gates
 

@@ -10,27 +10,31 @@ export const TREE = {
 } as const;
 
 /** §3 Fences: index = level - 1. */
-// Costs grow faster than durability past level 4, so high walls are a deliberate investment
-// rather than the default (chops per wood invested: 1.1 at level 4, about 0.6 at level 10).
+// Breaking walls is deliberately slow so land changes hands through sustained effort, not
+// drive-by chops. Costs grow faster than durability past level 4, so high walls are an
+// investment rather than the default (chops per wood: 11 at level 4, about 6 at level 10).
 export const FENCE_LEVELS = [
-	{ level: 1, chopsToBreak: 3, cost: 2, name: "Twig fence" },
-	{ level: 2, chopsToBreak: 6, cost: 3, name: "Plank fence" },
-	{ level: 3, chopsToBreak: 12, cost: 5, name: "Log palisade" },
-	{ level: 4, chopsToBreak: 20, cost: 8, name: "Reinforced palisade" },
-	{ level: 5, chopsToBreak: 30, cost: 12, name: "Stone wall" },
-	{ level: 6, chopsToBreak: 42, cost: 17, name: "Brick wall" },
-	{ level: 7, chopsToBreak: 56, cost: 23, name: "Fortified wall" },
-	{ level: 8, chopsToBreak: 72, cost: 30, name: "Iron-bound wall" },
-	{ level: 9, chopsToBreak: 90, cost: 38, name: "Steel wall" },
-	{ level: 10, chopsToBreak: 110, cost: 47, name: "King's wall" },
+	{ level: 1, chopsToBreak: 30, cost: 2, name: "Twig fence" },
+	{ level: 2, chopsToBreak: 60, cost: 3, name: "Plank fence" },
+	{ level: 3, chopsToBreak: 120, cost: 5, name: "Log palisade" },
+	{ level: 4, chopsToBreak: 200, cost: 8, name: "Reinforced palisade" },
+	{ level: 5, chopsToBreak: 300, cost: 12, name: "Stone wall" },
+	{ level: 6, chopsToBreak: 420, cost: 17, name: "Brick wall" },
+	{ level: 7, chopsToBreak: 560, cost: 23, name: "Fortified wall" },
+	{ level: 8, chopsToBreak: 720, cost: 30, name: "Iron-bound wall" },
+	{ level: 9, chopsToBreak: 900, cost: 38, name: "Steel wall" },
+	{ level: 10, chopsToBreak: 1100, cost: 47, name: "King's wall" },
 ] as const;
 
 export const FENCE = {
 	ownFenceChopsToBreak: 1,
 	/** Applies to every broken fence, own or not. */
 	refundRatio: 0.5,
-	/** Repairing a max-level fence costs this much wood per chop of damage, rounded up (§3). */
-	repairWoodPerChop: 0.5,
+	/**
+	 * Repairing costs this much wood per chop of damage, rounded up (§3). A full repair of
+	 * a nearly broken fence costs 2 wood at level 1, 10 at level 4 and 55 at level 10.
+	 */
+	repairWoodPerChop: 0.05,
 	/** Extra wood to turn one of your fences into a gate (§3 Gates). */
 	gateConversionCost: 2,
 } as const;

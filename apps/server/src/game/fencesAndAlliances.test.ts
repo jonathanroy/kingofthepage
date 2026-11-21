@@ -41,7 +41,8 @@ describe("breaking fences (§3 Chopping fences)", () => {
 			t += ms;
 			return t;
 		};
-		for (let i = 1; i <= 2; i++) {
+		const needed = FENCE_LEVELS[0]?.chopsToBreak ?? 0;
+		for (let i = 1; i < needed; i++) {
 			expect(h.world.chop(otherId, later(ACT)).ok).toBe(true);
 			expect(fenceAt(h, 0, -1).damage).toBe(i);
 		}
@@ -65,7 +66,7 @@ describe("breaking fences (§3 Chopping fences)", () => {
 });
 
 describe("upgrades (§3 Upgrade levels)", () => {
-	it("costs wood, raises the level, repairs damage, and only the owner can do it", () => {
+	it("repairs a damaged fence first, then upgrades it, and only the owner can do either", () => {
 		const { h, ownerId, otherId } = setupPair();
 		buildRing(h, ownerId, 0, 0, 1);
 		h.relocate(otherId, 0, -2, "down");
@@ -77,13 +78,16 @@ describe("upgrades (§3 Upgrade levels)", () => {
 
 		const owner = h.world.playerById(ownerId);
 		if (!owner) throw new Error("missing");
-		owner.wood = 3;
+		owner.wood = 4;
 		h.relocate(otherId, 9, 9, "down");
 		h.relocate(ownerId, 0, -2, "down");
+		// First press repairs the one chop of damage (1 wood), the second upgrades (3 wood).
 		expect(h.world.upgrade(ownerId, h.now() + 3 * ACT).ok).toBe(true);
+		expect(fenceAt(h, 0, -1)).toMatchObject({ level: 1, damage: 0, woodInvested: 2 });
+		expect(h.world.upgrade(ownerId, h.now() + 4 * ACT).ok).toBe(true);
 		expect(fenceAt(h, 0, -1)).toMatchObject({ level: 2, damage: 0, woodInvested: 5 });
 		expect(owner.wood).toBe(0);
-		expect(h.world.upgrade(ownerId, h.now() + 4 * ACT)).toMatchObject({
+		expect(h.world.upgrade(ownerId, h.now() + 5 * ACT)).toMatchObject({
 			ok: false,
 			reason: "notEnoughWood",
 		});

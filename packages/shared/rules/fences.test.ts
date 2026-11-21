@@ -81,7 +81,8 @@ describe("fenceRefund", () => {
 describe("chopFence (§3 Chopping fences)", () => {
 	it("adds damage until the level's chops are reached, then breaks with a refund", () => {
 		let f = buildFence("owner");
-		for (let i = 1; i < 3; i++) {
+		const needed = FENCE_LEVELS[0].chopsToBreak;
+		for (let i = 1; i < needed; i++) {
 			const r = chopFence(f, "enemy");
 			if (r.broken) throw new Error("broke too early");
 			expect(r.fence.damage).toBe(i);
@@ -102,9 +103,9 @@ describe("chopFence (§3 Chopping fences)", () => {
 	});
 });
 
-describe("upgrades repair (§3)", () => {
-	it("resets damage when upgrading", () => {
-		expect(upgradeFence({ ...buildFence("owner"), damage: 2 }).damage).toBe(0);
+describe("upgrades need a fully repaired fence (§3)", () => {
+	it("refuses to upgrade a damaged fence directly", () => {
+		expect(() => upgradeFence({ ...buildFence("owner"), damage: 2 })).toThrow();
 	});
 
 	it("checks ownership, max level and wood", () => {
@@ -125,7 +126,7 @@ describe("upgrades repair (§3)", () => {
 	});
 });
 
-describe("repair at max level (§3)", () => {
+describe("repair (§3)", () => {
 	it("has ten levels", () => {
 		expect(FENCE_LEVELS).toHaveLength(10);
 		expect(upgradeCost(upgradeTo(10))).toBeNull();
@@ -144,9 +145,22 @@ describe("repair at max level (§3)", () => {
 		expect(repaired).toMatchObject({ level: 10, damage: 0, woodInvested: damaged.woodInvested });
 	});
 
-	it("still upgrades (and repairs) below the max level", () => {
-		const damaged = { ...upgradeTo(9), damage: 4 };
-		expect(improveFence(damaged)).toMatchObject({ level: 10, damage: 0 });
+	it("repairs first at any level, then upgrades once undamaged", () => {
+		const damaged = { ...upgradeTo(3), damage: 40 };
+		expect(canUpgradeFence(damaged, "owner", 999)).toMatchObject({
+			ok: true,
+			kind: "repair",
+			cost: 2,
+		});
+		const repaired = improveFence(damaged);
+		expect(repaired).toMatchObject({ level: 3, damage: 0 });
+		expect(canUpgradeFence(repaired, "owner", 999)).toMatchObject({ ok: true, kind: "upgrade" });
+		expect(improveFence(repaired)).toMatchObject({ level: 4, damage: 0 });
+	});
+
+	it("charges at least 1 wood for any damage", () => {
+		expect(repairCost({ ...buildFence("owner"), damage: 1 })).toBe(1);
+		expect(repairCost(buildFence("owner"))).toBe(0);
 	});
 });
 

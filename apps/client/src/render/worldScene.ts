@@ -88,6 +88,8 @@ export class WorldScene extends Phaser.Scene {
 		makeGate: Phaser.Input.Keyboard.Key;
 	};
 	private nextMoveAt = 0;
+	/** Holding Space keeps chopping at the server's action pace: walls take hundreds of chops. */
+	private nextHeldChopAt = 0;
 	private readonly inputQueue: Input[] = [];
 	/** Ally fences the player already agreed to chop (§4: the warning comes before the first chop). */
 	private readonly confirmedAllyFences = new Set<string>();
@@ -122,7 +124,10 @@ export class WorldScene extends Phaser.Scene {
 			for (const key of this.keys[dir]) key.on("down", () => queue(dir));
 		}
 		for (const action of ["chop", "build", "upgrade", "makeGate"] as const) {
-			this.keys[action].on("down", () => queue(action));
+			this.keys[action].on("down", () => {
+				queue(action);
+				if (action === "chop") this.nextHeldChopAt = this.time.now + PACE.actionIntervalMs;
+			});
 		}
 		this.applyZoom();
 		this.scale.on("resize", () => this.applyZoom());
@@ -164,6 +169,10 @@ export class WorldScene extends Phaser.Scene {
 		const held = this.heldDirection();
 		if (held && time >= this.nextMoveAt && this.deps.world.me?.facing === held) {
 			this.sendMove(held, time);
+		}
+		if (this.keys.chop.isDown && time >= this.nextHeldChopAt && this.inputQueue.length === 0) {
+			this.inputQueue.push("chop");
+			this.nextHeldChopAt = time + PACE.actionIntervalMs;
 		}
 	}
 

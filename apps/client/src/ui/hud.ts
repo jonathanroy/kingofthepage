@@ -22,7 +22,7 @@ const REJECT_TEXT: Partial<Record<ActionRejectReason, string>> = {
 	notEmptyGround: "Fences go on empty ground.",
 	occupied: "Someone is standing there.",
 	notEnoughWood: "Not enough wood.",
-	maxLevel: "This fence is at the highest level and undamaged.",
+	maxLevel: "This fence is already at the highest level.",
 	alreadyGate: "That's already a gate.",
 	nothingToUpgrade: "Face one of your fences first.",
 };
@@ -81,7 +81,7 @@ export class Hud {
 
 	constructor() {
 		el("help").textContent =
-			`Arrows/WASD move · Space chop · F fence (${fenceBuildCost()}) · U upgrade/repair · G gate (+${FENCE.gateConversionCost})`;
+			`Arrows/WASD move · Space chop (hold) · F fence (${fenceBuildCost()}) · U repair/upgrade · G gate (+${FENCE.gateConversionCost})`;
 		el("confirm-yes").addEventListener("click", () => this.closeConfirm(true));
 		el("confirm-no").addEventListener("click", () => this.closeConfirm(false));
 	}

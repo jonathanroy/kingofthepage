@@ -44,18 +44,18 @@ export type FenceUpgrade =
 	  };
 
 /**
- * §3: the owner's "improve" action. Below the max level it upgrades (which also repairs);
- * at the max level it only repairs, for wood proportional to the damage.
+ * §3: the owner's "improve" action. A damaged fence is repaired first, at any level, for
+ * wood proportional to the damage; only a fully repaired fence can be upgraded.
  */
 export function canUpgradeFence(fence: Fence, actorId: PlayerId, wood: number): FenceUpgrade {
 	if (fence.ownerId !== actorId) return { ok: false, reason: "notYourFence" };
-	const upgrade = upgradeCost(fence);
-	if (upgrade === null) {
-		const repair = repairCost(fence);
-		if (repair === 0) return { ok: false, reason: "maxLevel" };
+	const repair = repairCost(fence);
+	if (repair > 0) {
 		if (wood < repair) return { ok: false, reason: "notEnoughWood" };
 		return { ok: true, kind: "repair", cost: repair };
 	}
+	const upgrade = upgradeCost(fence);
+	if (upgrade === null) return { ok: false, reason: "maxLevel" };
 	if (wood < upgrade) return { ok: false, reason: "notEnoughWood" };
 	return { ok: true, kind: "upgrade", cost: upgrade };
 }
@@ -64,7 +64,7 @@ export function isMaxLevel(fence: Fence): boolean {
 	return fence.level >= MAX_LEVEL;
 }
 
-/** Wood to clear a fence's damage; 0 when undamaged. */
+/** Wood to clear a fence's damage, at least 1 when damaged; 0 when undamaged. */
 export function repairCost(fence: Fence): number {
 	return Math.ceil(fence.damage * FENCE.repairWoodPerChop);
 }
@@ -74,20 +74,20 @@ export function repairFence(fence: Fence): Fence {
 	return { ...fence, damage: 0 };
 }
 
-/** Applies whichever improvement `canUpgradeFence` allowed. */
+/** Applies whichever improvement `canUpgradeFence` allowed: repair if damaged, else upgrade. */
 export function improveFence(fence: Fence): Fence {
-	return isMaxLevel(fence) ? repairFence(fence) : upgradeFence(fence);
+	return fence.damage > 0 ? repairFence(fence) : upgradeFence(fence);
 }
 
-/** §3: one level up. Also repairs all damage, the defender's answer to an attack in progress. */
+/** §3: one level up. The fence must be fully repaired first. */
 export function upgradeFence(fence: Fence): Fence {
 	const cost = upgradeCost(fence);
 	if (cost === null) throw new Error("Fence is already at max level");
+	if (fence.damage > 0) throw new Error("Repair the fence before upgrading it");
 	return {
 		...fence,
 		level: (fence.level + 1) as FenceLevel,
 		woodInvested: fence.woodInvested + cost,
-		damage: 0,
 	};
 }
 
