@@ -82,7 +82,8 @@ Before saying a task is done, run `pnpm typecheck` and `pnpm test` and make sure
 ### Enclosure detection
 
 - Recompute only when a fence or gate is placed or removed: flood fill (4-directional) from each walkable neighbor of the changed tile.
-- Bound every flood fill by the bounding box of the fences involved, plus one tile. If the fill escapes that box, the area is open. This keeps fills finite in an infinite world.
+- Walls for a fill are the changed fence's owner's fences, water and hills; other players' fences are open ground (design doc §5).
+- Bound every flood fill by the maximum enclosure area from `config.ts`. If the fill grows past it, the area is open. This keeps fills finite in an infinite world.
 - Each tile has at most one **controller**: the owner of the innermost enclosure containing it. Store it explicitly and update it on recompute.
 - When a controller changes on a tile holding a gold mine, settle the mine's gold first.
 

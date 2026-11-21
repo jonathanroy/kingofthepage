@@ -36,3 +36,16 @@ export const TERRAIN = {
 	denseForestTreeChance: 0.65,
 	scatteredTreeChance: 0.04,
 } as const;
+
+/** §5 Claiming land. */
+export const ENCLOSURE = {
+	/** Larger areas claim nothing; also bounds every flood fill. */
+	maxArea: 10_000,
+	/** Share of the outer border that must be the owner's own fences. */
+	minOwnFenceBorderShare: 0.5,
+	/**
+	 * Work cap when deciding whether a lake or hill next to an area is a hole inside it.
+	 * Hitting it counts the wall as outer border, the conservative choice.
+	 */
+	holeSearchLimit: 40_000,
+} as const;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TREE } from "./config";
 import { buildFence } from "./fences";
-import { isWalkable, isWall, resolveTile } from "./tiles";
+import { isWalkable, isWallFor, resolveTile } from "./tiles";
 
 const T0 = 1_000_000;
 
@@ -24,12 +24,14 @@ describe("resolveTile", () => {
 });
 
 describe("walls and walkability", () => {
-	it("treats fences, water and hills as walls, but not trees", () => {
-		expect(isWall({ kind: "fence", fence: buildFence("p1") })).toBe(true);
-		expect(isWall({ kind: "water" })).toBe(true);
-		expect(isWall({ kind: "hill" })).toBe(true);
-		expect(isWall({ kind: "tree" })).toBe(false);
-		expect(isWall({ kind: "grass" })).toBe(false);
+	it("treats own fences, water and hills as walls, but not others' fences or trees", () => {
+		const fence = { kind: "fence", fence: buildFence("p1") } as const;
+		expect(isWallFor(fence, "p1")).toBe(true);
+		expect(isWallFor(fence, "p2")).toBe(false);
+		expect(isWallFor({ kind: "water" }, "p1")).toBe(true);
+		expect(isWallFor({ kind: "hill" }, "p1")).toBe(true);
+		expect(isWallFor({ kind: "tree" }, "p1")).toBe(false);
+		expect(isWallFor({ kind: "grass" }, "p1")).toBe(false);
 	});
 
 	it("lets players walk only on grass and stumps", () => {

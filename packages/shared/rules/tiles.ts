@@ -1,6 +1,6 @@
 import type { Terrain } from "../world/terrain";
 import { TREE } from "./config";
-import type { Fence } from "./types";
+import type { Fence, PlayerId } from "./types";
 
 /** What the server stores on top of the generated terrain for one tile. */
 export type TileDiff = {
@@ -38,7 +38,15 @@ export function isWalkable(tile: Tile): boolean {
 	return tile.kind === "grass" || tile.kind === "stump";
 }
 
-/** §5 Enclosure: fences (and later gates), water and hills close an area. Trees don't. */
-export function isWall(tile: Tile): boolean {
-	return tile.kind === "fence" || tile.kind === "water" || tile.kind === "hill";
+/**
+ * §5 Enclosure: an owner's own fences, water and hills close an area for that owner.
+ * Other players' fences are open ground for this purpose. Trees never count.
+ */
+export function isWallFor(tile: Tile, ownerId: PlayerId): boolean {
+	if (tile.kind === "fence") return tile.fence.ownerId === ownerId;
+	return isTerrainWall(tile);
+}
+
+export function isTerrainWall(tile: Tile): boolean {
+	return tile.kind === "water" || tile.kind === "hill";
 }

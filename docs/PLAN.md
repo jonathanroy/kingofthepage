@@ -19,7 +19,7 @@ Status: ☐ not started · ◐ in progress · ☑ done
 - `rules/config.ts`: every tunable number.
 - `rules/`: `isWalkable`, `isWall` (fence, gate, water, hill), `isTreePresent(choppedAt, now)`, `canChopTree`, `chopTree` (randomness passed in), `canPlaceFence`, `fenceCost`, `fenceRefund` (50% of invested, rounded down, any owner).
 
-## M2. Enclosure engine ☐
+## M2. Enclosure engine ☑
 
 - Pure world view interface (`getTile(x, y)`), so rules never touch storage.
 - `findEnclosedRegions(owner, changedTile, view)`: 4-directional flood fill from each neighbor of the changed fence. Walls are that owner's fences, water and hills; other players' fences count as open. The fill must stay inside the bounding box of the owner's fences, otherwise the area is open (§5 "You must surround the area").

@@ -95,10 +95,11 @@ _(All values tunable.)_
 
 - **Your land is what your own walls close off.** An area belongs to a player once it is fully enclosed by **their own fences (including their gates), together with water and hills**.
 - **Other players' fences never close an area for you.** They still block movement, but for enclosure purposes they are treated as open ground. So neighbors can't share a wall, and a player can't claim someone else's land by building one line between that owner's walls (splitting).
-- **You must surround the area.** Water and hills can fill gaps in your wall, but the area must lie within the span of your fences: in each direction (north, south, east, west), one of your fences must reach at least as far as the area does. As a result:
-  - An area closed off by water and hills alone belongs to no one until someone surrounds it with fences.
+- **At least half of the border must be your fences.** Water and hills can make up the rest of an area's outer border, but no more than half of it _(tunable)_. Lakes or hills lying fully inside your land don't count as border. As a result:
+  - An area closed off by water and hills alone belongs to no one until someone fences enough of it.
   - A fence ring built against a lake shore or a hillside works.
-  - One short fence across a valley mouth does not claim the valley behind it.
+  - A short fence across a valley mouth, or a few fences at the corners of a lake-locked pocket, claims nothing.
+- **Maximum size:** an enclosure can't be larger than a maximum area _(tunable, e.g. 10,000 tiles)_. A larger ring claims nothing. This keeps enclosure checks fast in an infinite world.
 - Enclosure is checked on 4-directional connectivity: since players can't move diagonally, fences touching only at corners still close the shape.
 
 ### Access
@@ -164,7 +165,7 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
 ### Enclosure detection
 
 - On every fence placement or removal, re-run a flood fill from the tiles next to that fence, treating only **that fence owner's** fences, water and hills as walls. Only that owner's enclosures can change.
-- An area is enclosed if the fill stays within the bounding box of the owner's fences (see §5 "You must surround the area"). This also keeps every fill finite in the infinite world.
+- An area is enclosed if the fill stops before reaching the maximum area and at least half of its outer border is the owner's fences (§5). The maximum area keeps every fill finite in the infinite world.
 - Recompute `controller_id` for affected tiles, picking the innermost enclosure.
 - Settle gold for any mine whose controller changes.
 
