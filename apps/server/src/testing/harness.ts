@@ -1,0 +1,101 @@
+import type { ClientMessage, ServerMessage } from "@kotp/shared/protocol";
+import type { Direction, Terrain, TerrainGenerator } from "@kotp/shared/world";
+import { Game } from "../game/game";
+import { World } from "../game/world";
+
+/** Flat grass everywhere except the listed tiles. */
+export function terrainFrom(features: Record<string, Terrain> = {}): TerrainGenerator {
+	return { seed: "test", terrainAt: (x, y) => features[`${x},${y}`] ?? "grass" };
+}
+
+/** Small deterministic PRNG (mulberry32) so test runs are repeatable. */
+export function seededRandom(seed: number): () => number {
+	let a = seed >>> 0;
+	return () => {
+		a = (a + 0x6d2b79f5) >>> 0;
+		let t = a;
+		t = Math.imul(t ^ (t >>> 15), t | 1);
+		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+}
+
+export type TestClient = {
+	readonly sessionId: string;
+	readonly inbox: ServerMessage[];
+	closed: boolean;
+	send(msg: ClientMessage): void;
+	of<T extends ServerMessage["type"]>(type: T): Extract<ServerMessage, { type: T }>[];
+	last<T extends ServerMessage["type"]>(type: T): Extract<ServerMessage, { type: T }> | undefined;
+	clear(): void;
+	/** Joins and returns the new player's id. */
+	join(handle: string): string;
+};
+
+export function createHarness(features: Record<string, Terrain> = {}) {
+	let time = 1_000_000;
+	let ids = 0;
+	const random = seededRandom(42);
+	const world = new World({
+		seed: "test",
+		random,
+		newId: () => `id${++ids}`,
+		terrain: terrainFrom(features),
+	});
+	const game = new Game({
+		world,
+		seed: "test",
+		now: () => time,
+		random,
+		newId: () => `id${++ids}`,
+		newToken: () => `token${++ids}`,
+		hashToken: (t) => `hash:${t}`,
+	});
+
+	function client(): TestClient {
+		const inbox: ServerMessage[] = [];
+		const c: TestClient = {
+			sessionId: "",
+			inbox,
+			closed: false,
+			send: (msg) => game.receive(c.sessionId, msg),
+			of: <T extends ServerMessage["type"]>(type: T) =>
+				inbox.filter((m): m is Extract<ServerMessage, { type: T }> => m.type === type),
+			last: <T extends ServerMessage["type"]>(type: T) => c.of(type).at(-1),
+			clear: () => {
+				inbox.length = 0;
+			},
+			join: (handle) => {
+				c.send({ type: "join", handle });
+				const joined = c.last("joined");
+				if (!joined) throw new Error(`Join failed: ${JSON.stringify(c.last("joinRejected"))}`);
+				return joined.you.id;
+			},
+		};
+		(c as { sessionId: string }).sessionId = game.connect(
+			(msg) => inbox.push(msg),
+			() => {
+				c.closed = true;
+			},
+		);
+		return c;
+	}
+
+	return {
+		world,
+		game,
+		client,
+		now: () => time,
+		relocate(id: string, x: number, y: number, facing: Direction): void {
+			game.relocatePlayer(id, x, y, facing);
+		},
+		/** Advances the clock and runs one tick. */
+		advance(ms: number): void {
+			time += ms;
+			game.tick();
+		},
+		tick(): void {
+			game.tick();
+		},
+	};
+}

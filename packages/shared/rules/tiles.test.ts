@@ -13,6 +13,13 @@ describe("resolveTile", () => {
 		expect(resolveTile("tree", diff, T0 + TREE.regrowDelayMs).kind).toBe("tree");
 	});
 
+	it("waits for the stump to be empty before regrowing (§2)", () => {
+		const diff = { choppedAt: T0 };
+		const later = T0 + TREE.regrowDelayMs * 2;
+		expect(resolveTile("tree", diff, later, true).kind).toBe("stump");
+		expect(resolveTile("tree", diff, later, false).kind).toBe("tree");
+	});
+
 	it("keeps a fence on a stump even after the regrow delay", () => {
 		const diff = { choppedAt: T0, fence: buildFence("p1") };
 		expect(resolveTile("tree", diff, T0 + TREE.regrowDelayMs * 10).kind).toBe("fence");

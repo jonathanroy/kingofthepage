@@ -45,3 +45,17 @@ const NEIGHBOR_OFFSETS = [
 export function neighbors4(x: number, y: number): TileCoord[] {
 	return NEIGHBOR_OFFSETS.map(([dx, dy]) => ({ x: x + dx, y: y + dy }));
 }
+
+export type Direction = "up" | "down" | "left" | "right";
+
+const DIRECTION_OFFSETS: Record<Direction, readonly [number, number]> = {
+	up: [0, -1],
+	down: [0, 1],
+	left: [-1, 0],
+	right: [1, 0],
+};
+
+export function stepToward(x: number, y: number, dir: Direction): TileCoord {
+	const [dx, dy] = DIRECTION_OFFSETS[dir];
+	return { x: x + dx, y: y + dy };
+}

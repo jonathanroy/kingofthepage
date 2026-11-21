@@ -49,3 +49,35 @@ export const ENCLOSURE = {
 	 */
 	holeSearchLimit: 40_000,
 } as const;
+
+/** Movement and action pacing. Walking speed is what bounds exploration (§1). */
+export const PACE = {
+	moveIntervalMs: 150,
+	actionIntervalMs: 250,
+} as const;
+
+/** §1 Players and spawning. */
+export const HANDLE = {
+	minLength: 3,
+	maxLength: 16,
+	pattern: /^[A-Za-z0-9_]+$/,
+} as const;
+
+export const SPAWN = {
+	/** Distance range from a random existing fence. */
+	nearFenceMin: 3,
+	nearFenceMax: 20,
+	/** With no fences in the world, spawn within this distance of the origin. */
+	wildernessRadius: 200,
+	/** The spawn tile must connect to open ground at least this far away, so nobody starts boxed in by terrain. */
+	escapeDistance: 40,
+	attempts: 300,
+} as const;
+
+export const NETWORK = {
+	tickRateHz: 20,
+	/** Clients receive updates for chunks within this many chunks of their own. */
+	interestRadiusChunks: 2,
+	maxQueuedIntents: 8,
+	persistIntervalMs: 2000,
+} as const;

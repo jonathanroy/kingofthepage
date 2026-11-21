@@ -28,7 +28,7 @@ Status: ☐ not started · ◐ in progress · ☑ done
 - `breakFence` + breach: the owner loses an area that is no longer closed off; a removed divider merges two of the owner's areas.
 - Tests: corner-touching fences, other players' fences not closing anything, splitting attempts, closing against water/hills, terrain-only areas, valley mouths, nested rings, wrapping from outside, partly overlapping enclosures, inner and outer breaches, merging, enclosures crossing chunk borders.
 
-## M3. Protocol and authoritative server ☐
+## M3. Protocol and authoritative server ◐
 
 - `protocol/`: discriminated unions for intents (`join`, `move`, `chopTile`, `buildFence`) and events (`welcome`, `chunkSnapshot`, `chunkDiff`, `playerJoined/Moved/Left`, `inventory`, `enclosureChanged`, `error`). Zod schemas; JSON behind one `codec.ts`.
 - Join by unique handle; server suggests a random fun name. A session token is stored in `localStorage` so the same handle can reconnect.
@@ -37,6 +37,9 @@ Status: ☐ not started · ◐ in progress · ☑ done
 - Spawn: random unenclosed tile near an existing fence, or anywhere if no fence exists. The spawn tile must not be inside a terrain-closed pocket (its fill must escape a radius).
 - Interest management by chunk radius. Offline players are removed from view.
 - Drizzle schema + first migration: players, fences, chopped trees, enclosures, tile controllers. Batched writes, flush on chunk unload and shutdown.
+
+- Status: done and tested with an in-memory store. Postgres store written and migrated (`drizzle/0000_init.sql`) but not yet run against a live database.
+- MVP simplification: the whole world state (players, fences, chops, enclosures) is loaded into memory at boot and flushed in batches every 2 s and on shutdown, instead of per-chunk loading. Revisit if the stored world grows large.
 
 ## M4. Client (placeholder art) ☐
 

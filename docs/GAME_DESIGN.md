@@ -23,6 +23,7 @@ Numbers marked _(tunable)_ are starting values to adjust during playtesting.
 
 - A player joins by choosing a **handle**, which must be unique. A random fun name is suggested by default so a new player can start right away. No password or email.
 - New players spawn on a random **unenclosed** tile **near an existing fence**. If no fence exists in the world yet, they spawn anywhere.
+- Returning players reappear **where they left**, even if that spot has since been enclosed (they are then trapped, see §5 Access).
 
 ---
 
@@ -31,6 +32,7 @@ Numbers marked _(tunable)_ are starting values to adjust during playtesting.
 - Players chop trees to collect wood.
 - A tree takes **1 chop** and gives **1–2 wood** _(tunable)_.
 - Chopped trees disappear and **grow back** after a delay _(tunable, e.g. 10 minutes)_.
+- A tree doesn't grow back while a player stands on its stump; it appears as soon as the tile is empty.
 - **Who can chop a tree:**
   - On unclaimed land: anyone.
   - On claimed land: only owners of an enclosure containing that tile (see §5, including enclosing owners of nested areas).
@@ -202,4 +204,3 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
   - Trees block movement (like Pokémon), so players walk only on grass and on stumps of chopped trees.
   - Fences can be built on stumps, and a tree can't regrow through a fence. When the fence is removed, the tree reappears if its regrow delay has passed.
   - A fence can't be built on a tile where a player is standing.
-- **Tree regrowing under a player:** a tree's delay can expire while a player is standing on its stump. Does the tree wait until the tile is empty, or does it trap the player?

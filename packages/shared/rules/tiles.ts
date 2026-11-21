@@ -22,12 +22,22 @@ export function isTreeRegrown(choppedAt: number, now: number): boolean {
 	return now - choppedAt >= TREE.regrowDelayMs;
 }
 
-export function resolveTile(terrain: Terrain, diff: TileDiff | undefined, now: number): Tile {
+/**
+ * @param occupied whether a player stands on the tile: a tree waits for the stump
+ *   to be empty before growing back (§2).
+ */
+export function resolveTile(
+	terrain: Terrain,
+	diff: TileDiff | undefined,
+	now: number,
+	occupied = false,
+): Tile {
 	// A fence on a stump wins: a tree can't grow through a fence.
 	if (diff?.fence) return { kind: "fence", fence: diff.fence };
 	if (terrain === "tree") {
-		if (diff?.choppedAt !== undefined && !isTreeRegrown(diff.choppedAt, now)) {
-			return { kind: "stump", choppedAt: diff.choppedAt };
+		const choppedAt = diff?.choppedAt;
+		if (choppedAt !== undefined && (occupied || !isTreeRegrown(choppedAt, now))) {
+			return { kind: "stump", choppedAt };
 		}
 		return { kind: "tree" };
 	}

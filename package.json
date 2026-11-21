@@ -10,7 +10,8 @@
 		"dev": "pnpm --parallel --filter @kotp/server --filter @kotp/client dev",
 		"test": "vitest run",
 		"typecheck": "pnpm -r typecheck",
-		"lint": "biome check ."
+		"lint": "biome check .",
+		"db:up": "docker compose up -d db"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.6.8",

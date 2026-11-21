@@ -4,7 +4,8 @@
 	"type": "module",
 	"scripts": {
 		"dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"db:generate": "drizzle-kit generate"
 	},
 	"dependencies": {
 		"@kotp/shared": "workspace:*",
