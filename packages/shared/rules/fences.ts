@@ -15,7 +15,14 @@ export function fenceBuildCost(): number {
 }
 
 export function buildFence(ownerId: PlayerId): Fence {
-	return { ownerId, level: 1, woodInvested: fenceBuildCost(), damage: 0, gate: false };
+	return {
+		ownerId,
+		level: 1,
+		woodInvested: fenceBuildCost(),
+		ironInvested: 0,
+		damage: 0,
+		gate: false,
+	};
 }
 
 export type FencePlacement =
@@ -37,27 +44,48 @@ export function upgradeCost(fence: Fence): number | null {
 }
 
 export type FenceUpgrade =
-	| { readonly ok: true; readonly kind: "upgrade" | "repair"; readonly cost: number }
+	| {
+			readonly ok: true;
+			readonly kind: "upgrade" | "repair";
+			/** Wood to spend. */
+			readonly cost: number;
+			/** Iron to spend (upgrades to iron and steel levels only). */
+			readonly iron: number;
+	  }
 	| {
 			readonly ok: false;
-			readonly reason: "notYourFence" | "maxLevel" | "notEnoughWood";
+			readonly reason: "notYourFence" | "maxLevel" | "notEnoughWood" | "notEnoughIron";
 	  };
+
+/** Iron needed for the next level (0 for wood and stone levels), or null at max level. */
+export function upgradeIronCost(fence: Fence): number | null {
+	if (fence.level >= MAX_LEVEL) return null;
+	return levelInfo((fence.level + 1) as FenceLevel).iron;
+}
 
 /**
  * §3: the owner's "improve" action. A damaged fence is repaired first, at any level, for
  * wood proportional to the damage; only a fully repaired fence can be upgraded.
  */
-export function canUpgradeFence(fence: Fence, actorId: PlayerId, wood: number): FenceUpgrade {
+export function canUpgradeFence(
+	fence: Fence,
+	actorId: PlayerId,
+	wood: number,
+	iron = 0,
+): FenceUpgrade {
 	if (fence.ownerId !== actorId) return { ok: false, reason: "notYourFence" };
 	const repair = repairCost(fence);
 	if (repair > 0) {
+		// Repairs are wood only, at every level.
 		if (wood < repair) return { ok: false, reason: "notEnoughWood" };
-		return { ok: true, kind: "repair", cost: repair };
+		return { ok: true, kind: "repair", cost: repair, iron: 0 };
 	}
 	const upgrade = upgradeCost(fence);
-	if (upgrade === null) return { ok: false, reason: "maxLevel" };
+	const ironCost = upgradeIronCost(fence);
+	if (upgrade === null || ironCost === null) return { ok: false, reason: "maxLevel" };
 	if (wood < upgrade) return { ok: false, reason: "notEnoughWood" };
-	return { ok: true, kind: "upgrade", cost: upgrade };
+	if (iron < ironCost) return { ok: false, reason: "notEnoughIron" };
+	return { ok: true, kind: "upgrade", cost: upgrade, iron: ironCost };
 }
 
 export function isMaxLevel(fence: Fence): boolean {
@@ -88,6 +116,7 @@ export function upgradeFence(fence: Fence): Fence {
 		...fence,
 		level: (fence.level + 1) as FenceLevel,
 		woodInvested: fence.woodInvested + cost,
+		ironInvested: fence.ironInvested + (upgradeIronCost(fence) ?? 0),
 	};
 }
 
@@ -119,14 +148,14 @@ export function chopsToBreak(fence: Fence, actorId: PlayerId): number {
 }
 
 export type FenceChop =
-	| { readonly broken: true; readonly refund: number }
+	| { readonly broken: true; readonly refund: number; readonly ironRefund: number }
 	| { readonly broken: false; readonly fence: Fence };
 
 /** §3 Chopping fences: damage adds up (and persists) until it reaches the chops needed. */
 export function chopFence(fence: Fence, actorId: PlayerId): FenceChop {
 	const damage = fence.damage + 1;
 	if (fence.ownerId === actorId || damage >= chopsToBreak(fence, actorId)) {
-		return { broken: true, refund: fenceRefund(fence) };
+		return { broken: true, refund: fenceRefund(fence), ironRefund: fenceIronRefund(fence) };
 	}
 	return { broken: false, fence: { ...fence, damage } };
 }
@@ -137,6 +166,10 @@ export function needsAllyConfirmation(fence: Fence, actorId: PlayerId, isAlly: A
 }
 
 /** §3: 50% of everything invested, rounded down, whoever breaks it. */
+export function fenceIronRefund(fence: Fence): number {
+	return Math.floor(fence.ironInvested * FENCE.refundRatio);
+}
+
 export function fenceRefund(fence: Fence): number {
 	return Math.floor(fence.woodInvested * FENCE.refundRatio);
 }

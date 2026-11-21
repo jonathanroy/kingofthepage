@@ -27,6 +27,16 @@ export function drawLogIcon(ctx: Ctx): void {
 	);
 }
 
+export function drawIngotIcon(ctx: Ctx): void {
+	drawRows(
+		ctx,
+		[".kkkkk.", "kLsssdk", "ksssddk", "kkkkkkk"],
+		{ k: C.outline, L: C.ingotLight, s: C.ingot, d: C.ingotDark },
+		0,
+		0,
+	);
+}
+
 export function drawCoinIcon(ctx: Ctx): void {
 	drawRows(
 		ctx,

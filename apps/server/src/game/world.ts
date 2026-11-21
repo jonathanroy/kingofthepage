@@ -23,6 +23,7 @@ import {
 	fenceBuildCost,
 	fillRegion,
 	improveFence,
+	ironFromHit,
 	isWalkableFor,
 	LandRegistry,
 	landScores,
@@ -70,6 +71,8 @@ export type PlayerState = {
 	y: number;
 	facing: Direction;
 	wood: number;
+	/** Mined from ore rocks; needed for iron and steel wall levels (§2 Iron ore). */
+	iron: number;
 	lastSeenAt: number;
 	/** Total gold earned (§6), settled lazily from the mines this player controls. */
 	gold: number;
@@ -160,6 +163,7 @@ export class World {
 					ownerId: f.ownerId,
 					level: f.level as FenceLevel,
 					woodInvested: f.woodInvested,
+					ironInvested: f.ironInvested,
 					damage: f.damage,
 					gate: f.gate,
 				},
@@ -169,6 +173,7 @@ export class World {
 		for (const c of snapshot.chops) {
 			this.setDiff(c.x, c.y, { choppedAt: c.choppedAt });
 		}
+		for (const o of snapshot.ore) this.setDiff(o.x, o.y, { oreMined: o.mined });
 		const view = this.viewAt(now);
 		const added: Enclosure[] = [];
 		for (const e of snapshot.enclosures) {
@@ -210,12 +215,15 @@ export class World {
 		const fencesRemoved: TileCoord[] = [];
 		const chopsSet: { x: number; y: number; choppedAt: number }[] = [];
 		const chopsRemoved: TileCoord[] = [];
+		const oreSet: { x: number; y: number; mined: number }[] = [];
 		for (const { x, y } of this.dirtyTiles.values()) {
 			const diff = this.getDiff(x, y);
 			if (diff?.fence) fencesSet.push({ x, y, ...diff.fence });
 			else fencesRemoved.push({ x, y });
 			if (diff?.choppedAt !== undefined) chopsSet.push({ x, y, choppedAt: diff.choppedAt });
 			else chopsRemoved.push({ x, y });
+			// Mined ore never resets, so there is nothing to remove.
+			if (diff?.oreMined !== undefined) oreSet.push({ x, y, mined: diff.oreMined });
 		}
 		const batch: WriteBatch = {
 			players,
@@ -223,6 +231,7 @@ export class World {
 			fencesRemoved,
 			chopsSet,
 			chopsRemoved,
+			oreSet,
 			enclosuresAdded: [...this.enclosuresAdded.values()],
 			enclosuresRemoved: [...this.enclosuresRemoved],
 			minesSet: [...this.dirtyMines]
@@ -265,6 +274,7 @@ export class World {
 			now,
 			(this.occupancy.get(key) ?? 0) > 0,
 			this.terrain.mineAt(x, y),
+			this.terrain.oreAt(x, y),
 		);
 	}
 
@@ -316,6 +326,7 @@ export class World {
 			y: input.at.y,
 			facing: "down",
 			wood: 0,
+			iron: 0,
 			gold: 0,
 			lastSeenAt: input.now,
 			online: false,
@@ -418,6 +429,22 @@ export class World {
 
 		if (tile.kind === "fence") return this.chopFenceAt(p, target, tile.fence, now, confirmAlly);
 
+		if (tile.kind === "ore") {
+			// §2 Iron ore: anyone can mine; the rock empties for good, leaving rubble.
+			const iron = ironFromHit(tile.remaining);
+			const mined = tile.capacity - tile.remaining + iron;
+			this.updateDiff(target.x, target.y, { oreMined: mined });
+			p.iron += iron;
+			this.dirtyPlayers.add(id);
+			return {
+				ok: true,
+				events: [
+					{ kind: "tile", ...target },
+					{ kind: "inventory", id },
+				],
+			};
+		}
+
 		return { ok: false, reason: "nothingToChop", events: [] };
 	}
 
@@ -447,6 +474,7 @@ export class World {
 		this.updateDiff(at.x, at.y, { fence: undefined });
 		this.clearAllyChopReports(at);
 		p.wood += result.refund;
+		p.iron += result.ironRefund;
 		this.dirtyPlayers.add(p.id);
 		// The fence's owner is the one whose enclosures can change (§5).
 		const control = this.recomputeEnclosures(fence.ownerId, at, now);
@@ -460,9 +488,10 @@ export class World {
 		const tile = this.tileAt(target.x, target.y, now);
 		p.nextActionAt = now + PACE.actionIntervalMs;
 		if (tile.kind !== "fence") return { ok: false, reason: "nothingToUpgrade", events: [] };
-		const check = canUpgradeFence(tile.fence, id, p.wood);
+		const check = canUpgradeFence(tile.fence, id, p.wood, p.iron);
 		if (!check.ok) return { ok: false, reason: check.reason, events: [] };
 		p.wood -= check.cost;
+		p.iron -= check.iron;
 		this.dirtyPlayers.add(id);
 		this.updateDiff(target.x, target.y, { fence: improveFence(tile.fence) });
 		return {
@@ -534,13 +563,16 @@ export class World {
 	): {
 		chopped: [number, number, number][];
 		fences: FenceInfo[];
+		ore: [number, number, number][];
 		control: ChunkControl;
 		handles: Record<string, string>;
 	} {
 		const chopped: [number, number, number][] = [];
 		const fences: FenceInfo[] = [];
+		const ore: [number, number, number][] = [];
 		for (const d of this.diffsByChunk.get(chunkKey(cx, cy))?.values() ?? []) {
 			if (d.choppedAt !== undefined) chopped.push([d.x, d.y, d.choppedAt]);
+			if (d.oreMined !== undefined) ore.push([d.x, d.y, d.oreMined]);
 			if (d.fence) fences.push(fenceInfo(d.x, d.y, d.fence));
 		}
 		const owners: string[] = [];
@@ -561,14 +593,22 @@ export class World {
 		return {
 			chopped,
 			fences,
+			ore,
 			control: { owners, cells: any ? cells : null },
 			handles: this.handlesFor(handleIds),
 		};
 	}
 
-	tileSnapshot(x: number, y: number): { choppedAt: number | null; fence: FenceInfo | null } {
+	tileSnapshot(
+		x: number,
+		y: number,
+	): { choppedAt: number | null; fence: FenceInfo | null; oreMined: number | null } {
 		const d = this.getDiff(x, y);
-		return { choppedAt: d?.choppedAt ?? null, fence: d?.fence ? fenceInfo(x, y, d.fence) : null };
+		return {
+			choppedAt: d?.choppedAt ?? null,
+			fence: d?.fence ? fenceInfo(x, y, d.fence) : null,
+			oreMined: d?.oreMined ?? null,
+		};
 	}
 
 	handlesFor(ids: Iterable<string>): Record<string, string> {
@@ -725,8 +765,10 @@ export class World {
 			y,
 			...(merged.choppedAt !== undefined ? { choppedAt: merged.choppedAt } : {}),
 			...(merged.fence ? { fence: merged.fence } : {}),
+			...(merged.oreMined !== undefined ? { oreMined: merged.oreMined } : {}),
 		};
-		if (clean.choppedAt === undefined && !clean.fence) chunk.delete(key);
+		if (clean.choppedAt === undefined && !clean.fence && clean.oreMined === undefined)
+			chunk.delete(key);
 		else chunk.set(key, clean);
 		if (clean.fence) this.fenceKeys.add(key);
 		else this.fenceKeys.delete(key);
@@ -735,17 +777,19 @@ export class World {
 	private updateDiff(
 		x: number,
 		y: number,
-		patch: { choppedAt?: number; fence?: Fence | undefined },
+		patch: { choppedAt?: number; fence?: Fence | undefined; oreMined?: number },
 	): void {
 		const current = this.getDiff(x, y);
 		const next: TileDiff = {
 			...(current?.choppedAt !== undefined ? { choppedAt: current.choppedAt } : {}),
 			...(current?.fence ? { fence: current.fence } : {}),
+			...(current?.oreMined !== undefined ? { oreMined: current.oreMined } : {}),
 		};
 		const merged = { ...next, ...patch };
 		const clean: TileDiff = {
 			...(merged.choppedAt !== undefined ? { choppedAt: merged.choppedAt } : {}),
 			...(merged.fence ? { fence: merged.fence } : {}),
+			...(merged.oreMined !== undefined ? { oreMined: merged.oreMined } : {}),
 		};
 		// Replace rather than merge so a removed fence really disappears.
 		const { cx, cy } = chunkOfTile(x, y);
@@ -774,6 +818,7 @@ function toStoredPlayer(p: PlayerState): StoredPlayer {
 		y: p.y,
 		facing: p.facing,
 		wood: p.wood,
+		iron: p.iron,
 		gold: p.gold,
 		createdAt: p.createdAt,
 		lastSeenAt: p.lastSeenAt,

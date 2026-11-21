@@ -9,6 +9,7 @@ import {
 	chopFence,
 	chopsToBreak,
 	fenceBuildCost,
+	fenceIronRefund,
 	fenceRefund,
 	improveFence,
 	makeGate,
@@ -88,7 +89,7 @@ describe("chopFence (§3 Chopping fences)", () => {
 			expect(r.fence.damage).toBe(i);
 			f = r.fence;
 		}
-		expect(chopFence(f, "enemy")).toEqual({ broken: true, refund: 1 });
+		expect(chopFence(f, "enemy")).toEqual({ broken: true, refund: 1, ironRefund: 0 });
 	});
 
 	it("keeps damage from one attacker for the next (damage persists)", () => {
@@ -122,6 +123,7 @@ describe("upgrades need a fully repaired fence (§3)", () => {
 			ok: true,
 			kind: "upgrade",
 			cost: 3,
+			iron: 0,
 		});
 	});
 });
@@ -139,6 +141,7 @@ describe("repair (§3)", () => {
 			ok: true,
 			kind: "repair",
 			cost: repairCost(damaged),
+			iron: 0,
 		});
 		expect(canUpgradeFence(damaged, "owner", 0)).toEqual({ ok: false, reason: "notEnoughWood" });
 		const repaired = improveFence(damaged);
@@ -154,13 +157,48 @@ describe("repair (§3)", () => {
 		});
 		const repaired = improveFence(damaged);
 		expect(repaired).toMatchObject({ level: 3, damage: 0 });
-		expect(canUpgradeFence(repaired, "owner", 999)).toMatchObject({ ok: true, kind: "upgrade" });
+		expect(canUpgradeFence(repaired, "owner", 999, 99)).toMatchObject({
+			ok: true,
+			kind: "upgrade",
+		});
 		expect(improveFence(repaired)).toMatchObject({ level: 4, damage: 0 });
 	});
 
 	it("charges at least 1 wood for any damage", () => {
 		expect(repairCost({ ...buildFence("owner"), damage: 1 })).toBe(1);
 		expect(repairCost(buildFence("owner"))).toBe(0);
+	});
+});
+
+describe("iron (§2 Iron ore, §3)", () => {
+	it("needs iron for the iron and steel levels only", () => {
+		const levels = FENCE_LEVELS.filter((l) => l.iron > 0).map((l) => l.level);
+		expect(levels).toEqual([4, 8, 9, 10]);
+		expect(canUpgradeFence(upgradeTo(3), "owner", 999, 0)).toEqual({
+			ok: false,
+			reason: "notEnoughIron",
+		});
+		expect(canUpgradeFence(upgradeTo(3), "owner", 999, 2)).toMatchObject({
+			ok: true,
+			kind: "upgrade",
+			iron: 2,
+		});
+		expect(canUpgradeFence(upgradeTo(4), "owner", 999, 0)).toMatchObject({ ok: true, iron: 0 });
+	});
+
+	it("repairs with wood only, even on iron walls", () => {
+		expect(canUpgradeFence({ ...upgradeTo(9), damage: 40 }, "owner", 999, 0)).toMatchObject({
+			ok: true,
+			kind: "repair",
+			iron: 0,
+		});
+	});
+
+	it("tracks iron invested and refunds half of it when the wall breaks", () => {
+		const wall = upgradeTo(10);
+		expect(wall.ironInvested).toBe(2 + 4 + 6 + 10);
+		expect(fenceIronRefund(wall)).toBe(11);
+		expect(chopFence(wall, "owner")).toMatchObject({ broken: true, ironRefund: 11 });
 	});
 });
 

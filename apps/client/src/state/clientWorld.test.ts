@@ -23,6 +23,7 @@ function emptyChunk(cx: number, cy: number): ServerMessage {
 		cy,
 		chopped: [],
 		fences: [],
+		ore: [],
 		control: { owners: [], cells: null },
 		handles: {},
 	};
@@ -44,6 +45,7 @@ function setup(serverTime = 5_000) {
 		you: { id: "me", handle: "Me", x: spot.x, y: spot.y, facing: "down" },
 		token: "t",
 		wood: 0,
+		iron: 0,
 		gold: 0,
 		goldPerMinute: 0,
 		serverTime,
@@ -94,6 +96,7 @@ describe("ClientWorld", () => {
 		world.apply({
 			type: "inventory",
 			wood: 0,
+			iron: 0,
 			gold: 10,
 			goldPerMinute: 3,
 			asOf: world.serverNow(),
@@ -116,6 +119,7 @@ describe("ClientWorld", () => {
 			y: spot.y,
 			choppedAt: null,
 			fence: { x: spot.x + 1, y: spot.y, ownerId: "other", level: 1, damage: 0, gate: false },
+			oreMined: null,
 		});
 		world.predictMove("right", 1);
 		expect(world.me).toMatchObject({ x: spot.x, facing: "right" });
@@ -131,7 +135,7 @@ describe("ClientWorld", () => {
 		}
 		if (!tree) throw new Error("no tree in chunk 0,0 for this seed");
 		const { x, y } = tree;
-		world.apply({ type: "tile", x, y, choppedAt: world.serverNow(), fence: null });
+		world.apply({ type: "tile", x, y, choppedAt: world.serverNow(), fence: null, oreMined: null });
 		expect(world.tileAt(x, y).kind).toBe("stump");
 		tick(60 * 60 * 1000);
 		expect(world.tileAt(x, y).kind).toBe("tree");
@@ -147,6 +151,7 @@ describe("ClientWorld", () => {
 			cy: 0,
 			chopped: [],
 			fences: [],
+			ore: [],
 			control: { owners: ["alice"], cells },
 			handles: { alice: "Alice" },
 		});

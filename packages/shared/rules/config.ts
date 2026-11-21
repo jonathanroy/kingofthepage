@@ -14,16 +14,16 @@ export const TREE = {
 // drive-by chops. Costs grow faster than durability past level 4, so high walls are an
 // investment rather than the default (chops per wood: 11 at level 4, about 6 at level 10).
 export const FENCE_LEVELS = [
-	{ level: 1, chopsToBreak: 30, cost: 2, name: "Twig fence" },
-	{ level: 2, chopsToBreak: 60, cost: 3, name: "Plank fence" },
-	{ level: 3, chopsToBreak: 120, cost: 5, name: "Log palisade" },
-	{ level: 4, chopsToBreak: 200, cost: 8, name: "Reinforced palisade" },
-	{ level: 5, chopsToBreak: 300, cost: 12, name: "Stone wall" },
-	{ level: 6, chopsToBreak: 420, cost: 17, name: "Brick wall" },
-	{ level: 7, chopsToBreak: 560, cost: 23, name: "Fortified wall" },
-	{ level: 8, chopsToBreak: 720, cost: 30, name: "Iron-bound wall" },
-	{ level: 9, chopsToBreak: 900, cost: 38, name: "Steel wall" },
-	{ level: 10, chopsToBreak: 1100, cost: 47, name: "King's wall" },
+	{ level: 1, chopsToBreak: 30, cost: 2, iron: 0, name: "Twig fence" },
+	{ level: 2, chopsToBreak: 60, cost: 3, iron: 0, name: "Plank fence" },
+	{ level: 3, chopsToBreak: 120, cost: 5, iron: 0, name: "Log palisade" },
+	{ level: 4, chopsToBreak: 200, cost: 8, iron: 2, name: "Reinforced palisade" },
+	{ level: 5, chopsToBreak: 300, cost: 12, iron: 0, name: "Stone wall" },
+	{ level: 6, chopsToBreak: 420, cost: 17, iron: 0, name: "Brick wall" },
+	{ level: 7, chopsToBreak: 560, cost: 23, iron: 0, name: "Fortified wall" },
+	{ level: 8, chopsToBreak: 720, cost: 30, iron: 4, name: "Iron-bound wall" },
+	{ level: 9, chopsToBreak: 900, cost: 38, iron: 6, name: "Steel wall" },
+	{ level: 10, chopsToBreak: 1100, cost: 47, iron: 10, name: "King's wall" },
 ] as const;
 
 export const FENCE = {
@@ -96,6 +96,16 @@ export const NETWORK = {
 	interestRadiusChunks: 2,
 	maxQueuedIntents: 8,
 	persistIntervalMs: 2000,
+} as const;
+
+/** §2 Iron ore: rocks beside hills, mined until empty, never regrow. */
+export const IRON = {
+	/** Chance that a grass tile touching a hill holds an ore rock. */
+	foothillChance: 0.1,
+	/** Iron in a fresh rock, picked from this range by the world seed. */
+	capacityMin: 80,
+	capacityMax: 120,
+	perHit: 1,
 } as const;
 
 /** §6 Gold mines. */

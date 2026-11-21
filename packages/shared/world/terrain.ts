@@ -4,6 +4,7 @@ import { TERRAIN } from "../rules/config";
 import { CHUNK_SIZE, chunkKey, chunkOrigin, localIndex, tileToChunk } from "./coords";
 import { tileRandom } from "./hash";
 import { type Mine, type MineSize, mineInChunk } from "./mines";
+import { oreCapacityAt } from "./ore";
 
 /** Base terrain only. Chopped trees, fences and ownership are diffs on top. */
 export type Terrain = "grass" | "tree" | "water" | "hill";
@@ -15,7 +16,12 @@ export type TerrainGenerator = {
 	terrainAt(x: number, y: number): Terrain;
 	/** The gold mine on this tile, if any (§6). */
 	mineAt(x: number, y: number): MineSize | null;
+	/** Starting iron of the ore rock on this tile, if any (§2 Iron ore). */
+	oreAt(x: number, y: number): number | null;
 };
+
+/** Ore needs a few terrain lookups per tile and is asked for constantly, so it's cached. */
+const ORE_CACHE_LIMIT = 65_536;
 
 /** Mines per chunk are cheap to compute but looked up per tile, so a small cache helps. */
 const MINE_CACHE_LIMIT = 4096;
@@ -49,7 +55,19 @@ export function createTerrainGenerator(seed: string): TerrainGenerator {
 		return mine && mine.x === x && mine.y === y ? mine.size : null;
 	}
 
-	return { seed, terrainAt, mineAt };
+	const oreCache = new Map<string, number | null>();
+	function oreAt(x: number, y: number): number | null {
+		const key = `${x},${y}`;
+		let ore = oreCache.get(key);
+		if (ore === undefined) {
+			if (oreCache.size >= ORE_CACHE_LIMIT) oreCache.clear();
+			ore = oreCapacityAt(seed, x, y, terrainAt);
+			oreCache.set(key, ore);
+		}
+		return ore;
+	}
+
+	return { seed, terrainAt, mineAt, oreAt };
 }
 
 /** Row-major terrain codes (indices into TERRAIN_CODES) for one 32×32 chunk. */

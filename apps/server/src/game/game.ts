@@ -195,6 +195,7 @@ export class Game {
 			you: this.deps.world.playerInfo(player),
 			token,
 			wood: player.wood,
+			iron: player.iron,
 			gold: 0,
 			goldPerMinute: 0,
 			serverTime: now,
@@ -224,6 +225,7 @@ export class Game {
 		s.send({
 			type: "inventory",
 			wood: p.wood,
+			iron: p.iron,
 			gold: p.gold,
 			goldPerMinute: world.goldPerMinute(playerId),
 			asOf: now,

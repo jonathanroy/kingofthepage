@@ -106,6 +106,7 @@ export class WorldScene extends Phaser.Scene {
 	private lastGlintAt = 0;
 	private glints = 0;
 	private lastWood: number | null = null;
+	private lastIron: number | null = null;
 	private lastGold: number | null = null;
 	private lastGoldCheck = 0;
 	/** Players who asked their OS for less motion get no ambient effects. */
@@ -405,6 +406,8 @@ export class WorldScene extends Phaser.Scene {
 			this.paintGround(view, x, y, gk);
 			// A tree just fell: wood chips fly.
 			if ((before?.[0] === "t" || before?.[0] === "p") && gk[0] === "s") this.burstChips(x, y, 6);
+			// A rock shrank or crumbled: stone chips.
+			if (before?.[0] === "o") this.burstChips(x, y, 3);
 		}
 		this.updateFence(key);
 		// Neighbors may need to join or unjoin this tile's wall.
@@ -655,7 +658,11 @@ export class WorldScene extends Phaser.Scene {
 		this.glide(this.me, me.x, me.y);
 		if (this.lastWood !== null && me.wood > this.lastWood)
 			this.floatGain(`+${me.wood - this.lastWood}`, "log");
+		if (this.lastIron !== null && me.iron > this.lastIron) {
+			this.floatGain(`+${me.iron - this.lastIron}`, "ingot");
+		}
 		this.lastWood = me.wood;
+		this.lastIron = me.iron;
 		this.deps.onMeChanged();
 	}
 
@@ -736,7 +743,7 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	/** "+2" with an icon rising above your head: wood from a chop, gold from your mines. */
-	private floatGain(text: string, icon: "log" | "coin"): void {
+	private floatGain(text: string, icon: "log" | "coin" | "ingot"): void {
 		const view = this.me;
 		if (!view) return;
 		const x = view.container.x + 2;

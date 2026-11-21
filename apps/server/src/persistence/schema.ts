@@ -24,6 +24,7 @@ export const players = pgTable("players", {
 	y: integer("y").notNull(),
 	facing: text("facing").notNull(),
 	wood: integer("wood").notNull(),
+	iron: integer("iron").notNull().default(0),
 	/** Fractional: gold is settled per millisecond of mine control (§6). */
 	gold: doublePrecision("gold").notNull().default(0),
 	createdAt: ms("created_at").notNull(),
@@ -40,6 +41,7 @@ export const fences = pgTable(
 			.references(() => players.id),
 		level: smallint("level").notNull(),
 		woodInvested: integer("wood_invested").notNull(),
+		ironInvested: integer("iron_invested").notNull().default(0),
 		damage: integer("damage").notNull().default(0),
 		gate: boolean("gate").notNull().default(false),
 	},
@@ -90,6 +92,17 @@ export const mines = pgTable(
 			.notNull()
 			.references(() => players.id),
 		controlledSince: ms("controlled_since").notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.x, t.y] })],
+);
+
+/** Iron mined per ore rock (§2 Iron ore). Position and capacity come from the seed. */
+export const oreMined = pgTable(
+	"ore_mined",
+	{
+		x: integer("x").notNull(),
+		y: integer("y").notNull(),
+		mined: integer("mined").notNull(),
 	},
 	(t) => [primaryKey({ columns: [t.x, t.y] })],
 );

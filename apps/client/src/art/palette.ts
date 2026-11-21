@@ -43,6 +43,11 @@ export const C = {
 	rockDark: "#625d78",
 	rockShine: "#e6e2f0",
 	gold: "#ffd23f",
+	oreRust: "#c8663a",
+	oreRustLight: "#ec9a62",
+	ingot: "#b8c2d0",
+	ingotLight: "#e6edf5",
+	ingotDark: "#7d8898",
 	goldLight: "#fff3b0",
 	// Walls
 	wood: "#c08a55",

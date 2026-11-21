@@ -7,6 +7,8 @@ import type { AllyCheck, Fence, PlayerId } from "./types";
 export type TileDiff = {
 	readonly choppedAt?: number;
 	readonly fence?: Fence;
+	/** Iron already mined from this tile's ore rock (§2 Iron ore). Never resets. */
+	readonly oreMined?: number;
 };
 
 /** A tile as players experience it at a given moment. */
@@ -18,6 +20,10 @@ export type Tile =
 	| { readonly kind: "hill" }
 	/** §6: solid, can't hold a fence, doesn't block enclosure. */
 	| { readonly kind: "mine"; readonly size: MineSize }
+	/** §2: solid like a tree; `remaining` iron until it turns to rubble for good. */
+	| { readonly kind: "ore"; readonly remaining: number; readonly capacity: number }
+	/** An emptied ore rock: walkable, buildable ground. */
+	| { readonly kind: "rubble" }
 	| { readonly kind: "fence"; readonly fence: Fence };
 
 /** §8 Lazy updates: a chopped tree exists again once the regrow delay has passed. */
@@ -35,10 +41,15 @@ export function resolveTile(
 	now: number,
 	occupied = false,
 	mine: MineSize | null = null,
+	oreCapacity: number | null = null,
 ): Tile {
 	if (mine) return { kind: "mine", size: mine };
-	// A fence on a stump wins: a tree can't grow through a fence.
+	// A fence on a stump (or on rubble) wins: nothing grows through a fence.
 	if (diff?.fence) return { kind: "fence", fence: diff.fence };
+	if (oreCapacity !== null) {
+		const remaining = oreCapacity - (diff?.oreMined ?? 0);
+		return remaining > 0 ? { kind: "ore", remaining, capacity: oreCapacity } : { kind: "rubble" };
+	}
 	if (terrain === "tree") {
 		const choppedAt = diff?.choppedAt;
 		if (choppedAt !== undefined && (occupied || !isTreeRegrown(choppedAt, now))) {
@@ -50,7 +61,7 @@ export function resolveTile(
 }
 
 export function isWalkable(tile: Tile): boolean {
-	return tile.kind === "grass" || tile.kind === "stump";
+	return tile.kind === "grass" || tile.kind === "stump" || tile.kind === "rubble";
 }
 
 /** Walkable for this player, including gates they may pass (§3 Gates). */

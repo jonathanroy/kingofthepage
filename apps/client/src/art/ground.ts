@@ -71,6 +71,13 @@ export function groundKey(tile: Tile, x: number, y: number, base: GroundLookup):
 			return `${isPine(base, x, y) ? "p" : "t"}${v}`;
 		case "mine":
 			return `m${tile.size === "large" ? "L" : "S"}${v}`;
+		case "ore": {
+			// Three sizes, so players can see how much is left in a rock at a glance.
+			const left = tile.remaining / tile.capacity;
+			return `o${left > 0.66 ? 3 : left > 0.33 ? 2 : 1}${v}`;
+		}
+		case "rubble":
+			return `r${v}`;
 		case "water":
 			return `w${waterMask(base, x, y)}.${Math.floor(tileHash(x, y, 2) * SHIMMER_VARIANTS)}`;
 		case "hill":
@@ -178,6 +185,51 @@ export function mineRows(large: boolean): string[] {
 	return rows;
 }
 
+/** Iron ore rock: grey boulder with rusty veins, smaller as it's mined out (stage 3 → 1). */
+const ORE_ROCKS: Record<number, string[]> = {
+	3: [
+		"......kkkk......",
+		"....kkaaaakk....",
+		"...kaavaaaabk...",
+		"..kaaooaaaabbk..",
+		"..kaaaaaoOobbk..",
+		".kaoOaaaaabbbbk.",
+		".kaooaaaoabbcbk.",
+		".kaaaaaaoOobcck.",
+		".kbaaoabbbbbcck.",
+		"..kbbbbbooobck..",
+		"...kccccccccck..",
+		"....kkkkkkkkk...",
+	],
+	2: [
+		".....kkkkk......",
+		"...kkaavaakk....",
+		"..kaaoOaaabbk...",
+		"..kaaaaaaoobk...",
+		".kaoaaaaabbbck..",
+		".kaOoaabbooock..",
+		"..kbbbbbbbcck...",
+		"...kkkkkkkkk....",
+	],
+	1: [
+		"......kkkk......",
+		"....kkavaabk....",
+		"...kaoOabbcck...",
+		"...kbbbbooock...",
+		"....kkkkkkkk....",
+	],
+};
+
+function rubble(ctx: Ctx, variant: number): void {
+	grass(ctx, variant);
+	for (let i = 0; i < 4; i++) {
+		const rx = 2 + Math.floor(tileHash(variant, i, 41) * 11);
+		const ry = 4 + Math.floor(tileHash(variant, i, 42) * 9);
+		px(ctx, C.outline, rx - 1, ry, 3, 2);
+		px(ctx, i === 0 ? C.oreRust : C.rockMid, rx, ry, 1, 1);
+	}
+}
+
 function water(ctx: Ctx, mask: number, shimmer: number): void {
 	const n = mask & 1,
 		s = mask & 2,
@@ -237,8 +289,9 @@ function hill(ctx: Ctx, mask: number, variant: number): void {
 	if (variant === 7) {
 		const rx = 3 + Math.floor(tileHash(variant, 0, 33) * 9);
 		const ry = 3 + Math.floor(tileHash(variant, 0, 34) * 6);
-		px(ctx, C.outline, rx - 1, ry - 1, 4, 3);
-		px(ctx, C.rockLight, rx, ry, 2, 1);
+		// Soft pebble without an outline: outlined 4-pixel pebbles read as stray dots.
+		px(ctx, C.rockMid, rx, ry, 3, 2);
+		px(ctx, C.rockShine, rx, ry, 1, 1);
 	}
 	// Rim on the plateau's open edges: outline plus a light lip on top, darker sides.
 	if (mask & 1) {
@@ -325,6 +378,26 @@ export function drawGround(ctx: Ctx, key: string): void {
 			drawRows(ctx, mineRows(key[1] === "L"), map, 0, 0);
 			break;
 		}
+		case "o": {
+			const stage = Number(key[1]);
+			const rows = ORE_ROCKS[stage] ?? ORE_ROCKS[1] ?? [];
+			grass(ctx, Number(key.slice(2)));
+			treeShadow(ctx);
+			const map = {
+				k: C.outline,
+				a: C.rockLight,
+				b: C.rockMid,
+				c: C.rockDark,
+				v: C.rockShine,
+				o: C.oreRust,
+				O: C.oreRustLight,
+			};
+			drawRows(ctx, rows, map, 0, 15 - rows.length);
+			break;
+		}
+		case "r":
+			rubble(ctx, v);
+			break;
 		case "w": {
 			const [mask, shimmer] = key.slice(1).split(".").map(Number) as [number, number];
 			water(ctx, mask, shimmer);

@@ -5,6 +5,7 @@ import {
 	drawCoinIcon,
 	drawDust,
 	drawGlint,
+	drawIngotIcon,
 	drawLogIcon,
 	drawSparkleSheet,
 } from "../art/effects";
@@ -49,6 +50,7 @@ export function createStaticTextures(scene: Phaser.Scene): void {
 	addCanvasTexture(scene, "cracks", TILE, WALL_TEX_HEIGHT, drawCracks);
 	addCanvasTexture(scene, "log", 7, 5, drawLogIcon);
 	addCanvasTexture(scene, "coin", 5, 5, drawCoinIcon);
+	addCanvasTexture(scene, "ingot", 7, 4, drawIngotIcon);
 	addCanvasTexture(scene, "chip", 2, 2, drawChip);
 	addCanvasTexture(scene, "dust", 4, 3, drawDust);
 	addCanvasTexture(scene, "glint", 3, 1, drawGlint);

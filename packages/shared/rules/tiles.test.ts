@@ -56,4 +56,17 @@ describe("walls and walkability", () => {
 		expect(isWalkableFor(gate, "p3", () => false)).toBe(false);
 		expect(isWallFor(gate, "p1")).toBe(true);
 	});
+
+	it("turns an ore rock into rubble once emptied, for good (§2 Iron ore)", () => {
+		expect(resolveTile("grass", { oreMined: 30 }, 0, false, null, 100)).toEqual({
+			kind: "ore",
+			remaining: 70,
+			capacity: 100,
+		});
+		const rubble = resolveTile("grass", { oreMined: 100 }, 0, false, null, 100);
+		expect(rubble).toEqual({ kind: "rubble" });
+		expect(isWalkable(rubble)).toBe(true);
+		expect(isWalkable({ kind: "ore", remaining: 1, capacity: 100 })).toBe(false);
+		expect(isWallFor({ kind: "ore", remaining: 1, capacity: 100 }, "p")).toBe(false);
+	});
 });

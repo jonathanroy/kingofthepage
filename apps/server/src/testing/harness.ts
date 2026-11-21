@@ -7,11 +7,13 @@ import { World } from "../game/world";
 export function terrainFrom(
 	features: Record<string, Terrain> = {},
 	mines: Record<string, MineSize> = {},
+	ore: Record<string, number> = {},
 ): TerrainGenerator {
 	return {
 		seed: "test",
 		terrainAt: (x, y) => features[`${x},${y}`] ?? "grass",
 		mineAt: (x, y) => mines[`${x},${y}`] ?? null,
+		oreAt: (x, y) => ore[`${x},${y}`] ?? null,
 	};
 }
 
@@ -42,6 +44,7 @@ export type TestClient = {
 export function createHarness(
 	features: Record<string, Terrain> = {},
 	mines: Record<string, MineSize> = {},
+	ore: Record<string, number> = {},
 ) {
 	let time = 1_000_000;
 	let ids = 0;
@@ -50,7 +53,7 @@ export function createHarness(
 		seed: "test",
 		random,
 		newId: () => `id${++ids}`,
-		terrain: terrainFrom(features, mines),
+		terrain: terrainFrom(features, mines, ore),
 	});
 	const game = new Game({
 		world,
@@ -120,7 +123,9 @@ type Harness = ReturnType<typeof createHarness>;
 export function buildRing(h: Harness, id: string, cx: number, cy: number, r = 1): void {
 	const p = h.world.playerById(id);
 	if (!p) throw new Error("missing player");
+	// Plenty of both resources so tests can upgrade the ring freely afterwards.
 	p.wood += 1000;
+	p.iron += 1000;
 	let t = h.now();
 	for (let x = cx - r; x <= cx + r; x++) {
 		for (let y = cy - r; y <= cy + r; y++) {

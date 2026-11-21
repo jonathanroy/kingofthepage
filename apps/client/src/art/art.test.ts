@@ -41,11 +41,28 @@ describe("ground keys", () => {
 
 	it("is stable per tile and keys fences on chopped forest as stumps", () => {
 		const base = lookup(["T"]);
-		const fence = { ownerId: "p", level: 1 as const, woodInvested: 2, damage: 0, gate: false };
+		const fence = {
+			ownerId: "p",
+			level: 1 as const,
+			woodInvested: 2,
+			ironInvested: 0,
+			damage: 0,
+			gate: false,
+		};
 		expect(groundKey({ kind: "grass" }, 3, 4, base)).toBe(groundKey({ kind: "grass" }, 3, 4, base));
 		expect(groundKey({ kind: "fence", fence }, 0, 0, base)[0]).toBe("s");
 		expect(groundKey({ kind: "fence", fence }, 5, 5, base)[0]).toBe("g");
 		expect(groundKey({ kind: "mine", size: "large" }, 0, 0, base).slice(0, 2)).toBe("mL");
+		expect(groundKey({ kind: "rubble" }, 0, 0, base)[0]).toBe("r");
+	});
+
+	it("shows how much is left in an ore rock in three sizes", () => {
+		const base = lookup(["."]);
+		const size = (remaining: number) =>
+			groundKey({ kind: "ore", remaining, capacity: 90 }, 0, 0, base).slice(0, 2);
+		expect(size(90)).toBe("o3");
+		expect(size(45)).toBe("o2");
+		expect(size(5)).toBe("o1");
 	});
 });
 

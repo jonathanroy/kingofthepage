@@ -95,6 +95,7 @@ export type ActionRejectReason =
 	| "notEmptyGround"
 	| "occupied"
 	| "notEnoughWood"
+	| "notEnoughIron"
 	| "notJoined"
 	| "maxLevel"
 	| "alreadyGate"
@@ -115,6 +116,7 @@ export type ServerMessage =
 			/** Keep this to resume as the same player later. */
 			readonly token: string;
 			readonly wood: number;
+			readonly iron: number;
 			readonly gold: number;
 			readonly goldPerMinute: number;
 			readonly serverTime: number;
@@ -127,6 +129,8 @@ export type ServerMessage =
 			/** [x, y, choppedAt] for trees that were chopped and may not have regrown. */
 			readonly chopped: readonly (readonly [number, number, number])[];
 			readonly fences: readonly FenceInfo[];
+			/** [x, y, iron mined] for ore rocks that have been mined at all. */
+			readonly ore: readonly (readonly [number, number, number])[];
 			readonly control: ChunkControl;
 			readonly handles: Readonly<Record<string, string>>;
 	  }
@@ -136,6 +140,7 @@ export type ServerMessage =
 			readonly y: number;
 			readonly choppedAt: number | null;
 			readonly fence: FenceInfo | null;
+			readonly oreMined: number | null;
 	  }
 	| {
 			readonly type: "control";
@@ -160,6 +165,7 @@ export type ServerMessage =
 	| {
 			readonly type: "inventory";
 			readonly wood: number;
+			readonly iron: number;
 			readonly gold: number;
 			readonly goldPerMinute: number;
 			readonly asOf: number;

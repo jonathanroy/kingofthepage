@@ -36,6 +36,13 @@ Numbers marked _(tunable)_ are starting values to adjust during playtesting.
 - A tree can't grow back through a fence built on its stump. When the fence is removed, the tree reappears if its regrow delay has passed.
 - **Anyone can chop any tree**, on claimed land or not. Fences are what protect your trees: strangers can't reach them unless they get inside (trapped, through a gate as an ally, or through a breach).
 
+### Iron ore
+
+- **Iron** is the second resource. The walls that contain iron or steel (levels 4, 8, 9 and 10) need it to upgrade (see §3).
+- **Ore rocks** sit on grass right next to hills, placed from the world seed like the terrain _(tunable rarity)_. They are solid like trees, can be mined by anyone, and don't count as walls for enclosure.
+- Mining works like chopping: face the rock and press the chop key. Each hit gives **1 iron** _(tunable)_.
+- A rock holds **a lot of iron** (80–120, set by the seed, _tunable_) and **never comes back**: once empty it turns into rubble, which can be walked on and built on.
+
 ---
 
 ## 3. Fences
@@ -49,18 +56,18 @@ Numbers marked _(tunable)_ are starting values to adjust during playtesting.
 
 Every fence starts basic and can be upgraded by its owner. Each level increases the number of chops an attacker needs to break it.
 
-| Level | Chops to break | Cost           | Look                |
-| ----- | -------------- | -------------- | ------------------- |
-| 1     | 30             | 2 wood (build) | Twig fence          |
-| 2     | 60             | +3 wood        | Plank fence         |
-| 3     | 120            | +5 wood        | Log palisade        |
-| 4     | 200            | +8 wood        | Reinforced palisade |
-| 5     | 300            | +12 wood       | Stone wall          |
-| 6     | 420            | +17 wood       | Brick wall          |
-| 7     | 560            | +23 wood       | Fortified wall      |
-| 8     | 720            | +30 wood       | Iron-bound wall     |
-| 9     | 900            | +38 wood       | Steel wall          |
-| 10    | 1100           | +47 wood       | King's wall         |
+| Level | Chops to break | Cost                     | Look                |
+| ----- | -------------- | ------------------------ | ------------------- |
+| 1     | 30             | 2 wood (build)           | Twig fence          |
+| 2     | 60             | +3 wood                  | Plank fence         |
+| 3     | 120            | +5 wood                  | Log palisade        |
+| 4     | 200            | +8 wood, **+2 iron**     | Reinforced palisade |
+| 5     | 300            | +12 wood                 | Stone wall          |
+| 6     | 420            | +17 wood                 | Brick wall          |
+| 7     | 560            | +23 wood                 | Fortified wall      |
+| 8     | 720            | +30 wood, **+4 iron**    | Iron-bound wall     |
+| 9     | 900            | +38 wood, **+6 iron**    | Steel wall          |
+| 10    | 1100           | +47 wood, **+10 iron**   | King's wall         |
 
 Breaking walls is deliberately slow so land changes hands through sustained effort rather than quick raids.
 
@@ -74,9 +81,9 @@ _(All values tunable.)_
 | An enemy's  | Per upgrade level | —                                                                                               |
 | An ally's   | Per upgrade level | Confirmation dialog before the first chop; the ally gets a notification; the alliance continues |
 
-- Breaking any fence, **your own or someone else's**, returns **50% of the total wood invested** in it (build + upgrades), rounded down.
+- Breaking any fence, **your own or someone else's**, returns **50% of the total wood and iron invested** in it (build + upgrades), each rounded down.
 - **Damage persists:** chops on a fence add up until it breaks, even across sessions and from different attackers. Nothing heals it except the owner's repair.
-- **Repairing:** the owner can repair a damaged fence at any level for wood: 1 wood per 20 chops of damage, rounded up _(tunable)_. Repairs don't count as wood invested, so they don't raise the 50% refund.
+- **Repairing:** the owner can repair a damaged fence at any level for wood (never iron): 1 wood per 20 chops of damage, rounded up _(tunable)_. Repairs don't count as wood invested, so they don't raise the 50% refund.
 - **Defended walls hold:** a repair clears all damage, and the owner can repair as often as attackers can chop. An online owner with wood can therefore out-repair any attack. This is intended: walls fall when their owner is away or out of wood, so attacks reward timing and draining the defender's wood.
 - **Upgrading needs full health:** a damaged fence must be repaired before it can be upgraded. The same action does both: it repairs a damaged fence, and upgrades an undamaged one.
 

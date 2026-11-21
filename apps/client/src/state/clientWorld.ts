@@ -36,6 +36,7 @@ export type Me = {
 	y: number;
 	facing: Direction;
 	wood: number;
+	iron: number;
 	/** Settled gold at `goldAsOf` (server time); extrapolate with `goldPerMinute`. */
 	gold: number;
 	goldPerMinute: number;
@@ -113,6 +114,7 @@ export class ClientWorld {
 				this.me = {
 					...msg.you,
 					wood: msg.wood,
+					iron: msg.iron,
 					gold: msg.gold,
 					goldPerMinute: msg.goldPerMinute,
 					goldAsOf: msg.serverTime,
@@ -125,7 +127,7 @@ export class ClientWorld {
 				this.applyChunk(msg);
 				break;
 			case "tile":
-				this.applyTile(msg.x, msg.y, msg.choppedAt, msg.fence);
+				this.applyTile(msg.x, msg.y, msg.choppedAt, msg.fence, msg.oreMined);
 				break;
 			case "control":
 				for (const [id, h] of Object.entries(msg.handles)) this.handles.set(id, h);
@@ -151,6 +153,7 @@ export class ClientWorld {
 			case "inventory":
 				if (this.me) {
 					this.me.wood = msg.wood;
+					this.me.iron = msg.iron;
 					this.me.gold = msg.gold;
 					this.me.goldPerMinute = msg.goldPerMinute;
 					this.me.goldAsOf = msg.asOf;
@@ -196,6 +199,7 @@ export class ClientWorld {
 			this.serverNow(),
 			this.isOccupied(x, y),
 			this.terrain.mineAt(x, y),
+			this.terrain.oreAt(x, y),
 		);
 	}
 
@@ -276,6 +280,10 @@ export class ClientWorld {
 		const key = chunkKey(msg.cx, msg.cy);
 		const chunk: ChunkData = { cx: msg.cx, cy: msg.cy, diffs: new Map(), control: new Map() };
 		for (const [x, y, choppedAt] of msg.chopped) chunk.diffs.set(tileKey(x, y), { choppedAt });
+		for (const [x, y, mined] of msg.ore) {
+			const k = tileKey(x, y);
+			chunk.diffs.set(k, { ...chunk.diffs.get(k), oreMined: mined });
+		}
 		for (const f of msg.fences) {
 			const k = tileKey(f.x, f.y);
 			chunk.diffs.set(k, { ...chunk.diffs.get(k), fence: toFence(f) });
@@ -298,16 +306,24 @@ export class ClientWorld {
 		this.evictFarChunks();
 	}
 
-	private applyTile(x: number, y: number, choppedAt: number | null, fence: FenceInfo | null): void {
+	private applyTile(
+		x: number,
+		y: number,
+		choppedAt: number | null,
+		fence: FenceInfo | null,
+		oreMined: number | null,
+	): void {
 		const chunk = this.chunkOf(x, y);
 		if (!chunk) return;
 		const key = tileKey(x, y);
 		const diff: TileDiff = {
 			...(choppedAt !== null ? { choppedAt } : {}),
 			...(fence ? { fence: toFence(fence) } : {}),
+			...(oreMined !== null ? { oreMined } : {}),
 		};
-		if (diff.choppedAt === undefined && !diff.fence) chunk.diffs.delete(key);
-		else chunk.diffs.set(key, diff);
+		if (diff.choppedAt === undefined && !diff.fence && diff.oreMined === undefined) {
+			chunk.diffs.delete(key);
+		} else chunk.diffs.set(key, diff);
 		this.changes.tiles.add(key);
 	}
 
@@ -363,6 +379,7 @@ function toFence(f: FenceInfo): Fence {
 		ownerId: f.ownerId,
 		level: f.level as Fence["level"],
 		woodInvested: 0,
+		ironInvested: 0,
 		damage: f.damage,
 		gate: f.gate,
 	};

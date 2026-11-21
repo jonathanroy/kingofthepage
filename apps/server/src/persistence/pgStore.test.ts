@@ -44,6 +44,7 @@ describe.skipIf(!url)("PgStore", () => {
 			y: 7,
 			facing: "left" as const,
 			wood: 3,
+			iron: 7,
 			gold: 1.5,
 			createdAt: 1000,
 			lastSeenAt: 2000,
@@ -51,11 +52,21 @@ describe.skipIf(!url)("PgStore", () => {
 		await store.write({
 			players: [player],
 			fencesSet: [
-				{ x: 900_001, y: 1, ownerId: id, level: 1, woodInvested: 2, damage: 1, gate: true },
+				{
+					x: 900_001,
+					y: 1,
+					ownerId: id,
+					level: 1,
+					woodInvested: 2,
+					ironInvested: 4,
+					damage: 1,
+					gate: true,
+				},
 			],
 			fencesRemoved: [],
 			chopsSet: [{ x: 900_002, y: 1, choppedAt: 1234 }],
 			chopsRemoved: [],
+			oreSet: [{ x: 900_003, y: 1, mined: 12 }],
 			enclosuresAdded: [{ id: enclosureId, ownerId: id, createdAt: 5, anchorX: 1, anchorY: 2 }],
 			enclosuresRemoved: [],
 			alliancesSet: [],
@@ -70,6 +81,7 @@ describe.skipIf(!url)("PgStore", () => {
 			fencesRemoved: [{ x: 900_001, y: 1 }],
 			chopsSet: [{ x: 900_002, y: 1, choppedAt: 5678 }],
 			chopsRemoved: [],
+			oreSet: [{ x: 900_003, y: 1, mined: 30 }],
 			enclosuresAdded: [],
 			enclosuresRemoved: [enclosureId],
 			alliancesSet: [],
@@ -81,6 +93,8 @@ describe.skipIf(!url)("PgStore", () => {
 		expect(snap.players.find((p) => p.id === id)).toMatchObject({ wood: 9, facing: "left", x: -5 });
 		expect(snap.fences.find((f) => f.x === 900_001)).toBeUndefined();
 		expect(snap.chops.find((c) => c.x === 900_002)?.choppedAt).toBe(5678);
+		expect(snap.ore.find((o) => o.x === 900_003)?.mined).toBe(30);
+		expect(snap.players.find((p) => p.id === id)?.iron).toBe(7);
 		expect(snap.enclosures.find((e) => e.id === enclosureId)).toBeUndefined();
 	});
 });

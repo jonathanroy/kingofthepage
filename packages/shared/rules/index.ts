@@ -6,6 +6,7 @@ export * from "./fences";
 export * from "./gold";
 export * from "./handles";
 export * from "./land";
+export * from "./ore";
 export * from "./tiles";
 export * from "./trees";
 export * from "./types";
