@@ -17,7 +17,9 @@ export class PgStore implements WorldStore {
 	private readonly db;
 
 	constructor(databaseUrl: string) {
-		this.client = postgres(databaseUrl, { max: 4 });
+		// Postgres NOTICEs (e.g. "relation already exists, skipping" on each migration check)
+		// are informational; real problems arrive as errors.
+		this.client = postgres(databaseUrl, { max: 4, onnotice: () => {} });
 		this.db = drizzle(this.client, { schema });
 	}
 
