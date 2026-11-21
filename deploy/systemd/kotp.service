@@ -1,0 +1,32 @@
+# King of the Page game server. Install as /etc/systemd/system/kotp.service.
+[Unit]
+Description=King of the Page game server
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kotp
+Group=kotp
+WorkingDirectory=/opt/kotp/apps/server
+EnvironmentFile=/etc/kotp/kotp.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --enable-source-maps dist/server.js
+Restart=always
+RestartSec=2
+# On SIGTERM the server closes connections and writes pending world changes to Postgres.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Hardening: the server only needs the network and Postgres.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

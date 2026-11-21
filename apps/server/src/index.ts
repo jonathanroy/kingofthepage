@@ -17,8 +17,8 @@ if (env.databaseUrl) {
 	store = new MemoryStore();
 }
 
-const server = await startServer({ seed: env.worldSeed, port: env.port, store });
-console.log(`KOTP server on http://localhost:${server.port} (WebSocket at /ws)`);
+const server = await startServer({ seed: env.worldSeed, port: env.port, host: env.host, store });
+console.log(`KOTP server on http://${env.host}:${server.port} (WebSocket at /ws)`);
 
 let stopping = false;
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

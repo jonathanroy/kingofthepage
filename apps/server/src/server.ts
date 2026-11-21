@@ -20,6 +20,8 @@ export type RunningServer = {
 export type StartOptions = {
 	readonly seed: string;
 	readonly port: number;
+	/** Interface to bind; behind nginx this should be 127.0.0.1. */
+	readonly host?: string;
 	readonly store: WorldStore;
 	readonly now?: () => number;
 	readonly log?: (msg: string) => void;
@@ -43,13 +45,18 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
 		hashToken: (token) => createHash("sha256").update(token).digest("hex"),
 	});
 
-	const http = createServer((_req, res) => {
+	const http = createServer((req, res) => {
+		if (req.url === "/healthz") {
+			res.writeHead(200, { "content-type": "application/json" });
+			res.end(JSON.stringify({ ok: true, online: game.onlineCount() }));
+			return;
+		}
 		res.writeHead(200, { "content-type": "text/plain" });
 		res.end("King of the Page server\n");
 	});
 	const wss = attachWebSocketServer(game, http);
 
-	await new Promise<void>((resolve) => http.listen(options.port, resolve));
+	await new Promise<void>((resolve) => http.listen(options.port, options.host, resolve));
 	const address = http.address();
 	const port = typeof address === "object" && address ? address.port : options.port;
 

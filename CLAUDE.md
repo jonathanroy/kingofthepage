@@ -44,6 +44,8 @@ Set these up as root scripts while scaffolding, and keep them working:
 - `pnpm test` runs all Vitest suites
 - `pnpm typecheck` runs `tsc --noEmit` across all packages
 - `pnpm lint` runs Biome check
+- `pnpm build` builds the client (`apps/client/dist`) and bundles the server (`apps/server/dist/server.js`)
+- `pnpm start` runs the bundled server (see `docs/DEPLOY.md` for production)
 
 Before saying a task is done, run `pnpm typecheck` and `pnpm test` and make sure both pass.
 

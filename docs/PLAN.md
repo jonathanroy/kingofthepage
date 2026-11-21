@@ -59,9 +59,9 @@ Fence upgrades (levels 1–4, upgrading repairs), chopping others' fences per le
 
 Full nesting and controller rules, seeded gold mines with lazy `settleMineGold`, Land and Gold leaderboards (settle before read). Gold is fractional (settled per millisecond); only controlled mines are stored. Migration `0002` adds player gold and the mines table. Leaderboards are rate-limited per client and show the top 10.
 
-## M7. Deployment ☐
+## M7. Deployment ☑
 
-Production build, systemd unit for the server, nginx config (static client + WebSocket upgrade proxy). Optional bot load test.
+`pnpm build` (Vite client + esbuild server bundle), `pnpm start`, systemd unit, nginx site (static client, `/ws` upgrade proxy, asset caching), env example, update script and `docs/DEPLOY.md`. Server binds via `HOST`, pings sockets every 30 s, and exposes `/healthz`. Verified locally through nginx. Not yet done: a run against a real Postgres, and a bot load test.
 
 ## Assumptions
 
