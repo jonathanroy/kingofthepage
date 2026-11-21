@@ -107,7 +107,7 @@ _(All values tunable.)_
 
 ### Enclosure
 
-- **Your land is what your own walls close off.** An area belongs to a player once it is fully enclosed by **their own fences (including their gates), together with water and hills**.
+- **Your land is what your own walls close off.** An area belongs to a player once it is fully enclosed by **their own fences (including their gates), together with water and hills**. Trees never count as walls: anyone can chop them, so only fences protect land.
 - **Other players' fences never close an area for you.** They still block movement, but for enclosure purposes they are treated as open ground. So neighbors can't share a wall, and a player can't claim someone else's land by building one line between that owner's walls (splitting).
 - **At least half of the border must be your fences.** Water and hills can make up the rest of an area's outer border, but no more than half of it _(tunable)_. Lakes or hills lying fully inside your land don't count as border. As a result:
   - An area closed off by water and hills alone belongs to no one until someone fences enough of it.
@@ -207,4 +207,4 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
 
 ## 10. Open questions
 
-- Can trees act as walls for enclosure? (Water and hills can; trees are undecided.)
+- None right now.
