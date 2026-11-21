@@ -16,7 +16,7 @@ Numbers marked _(tunable)_ are starting values to adjust during playtesting.
 - **Landscape:** countryside with grass, forests, lakes and hills.
 - **Generation:** procedural, created as players explore. The world uses a single seed, so the same coordinates always produce the same terrain. The world is split into chunks (e.g. 32×32 tiles).
 - **Size:** infinite in all directions. Walking speed is the only practical limit on how far players go.
-- **Movement:** 4-directional, one tile at a time. Water (lakes) and hills can't be walked on.
+- **Movement:** 4-directional, one tile at a time. Water (lakes), hills and trees can't be walked on; players walk on grass and on the stumps of chopped trees.
 - **Presence:** all online players are visible to each other in real time. Offline characters are not shown.
 
 ### Players and spawning
@@ -33,6 +33,7 @@ Numbers marked _(tunable)_ are starting values to adjust during playtesting.
 - A tree takes **1 chop** and gives **1–2 wood** _(tunable)_.
 - Chopped trees disappear and **grow back** after a delay _(tunable, e.g. 10 minutes)_.
 - A tree doesn't grow back while a player stands on its stump; it appears as soon as the tile is empty.
+- A tree can't grow back through a fence built on its stump. When the fence is removed, the tree reappears if its regrow delay has passed.
 - **Anyone can chop any tree**, on claimed land or not. Fences are what protect your trees: strangers can't reach them unless they get inside (trapped, through a gate as an ally, or through a breach).
 
 ---
@@ -41,7 +42,7 @@ Numbers marked _(tunable)_ are starting values to adjust during playtesting.
 
 ### Building
 
-- Fences cost wood and are placed on empty ground tiles.
+- Fences cost wood and are placed on empty ground: grass or the stump of a chopped tree, never on a tile where a player is standing.
 - Fences can be built anywhere, **including inside someone else's land** (see §5 Nesting).
 
 ### Upgrade levels
@@ -207,7 +208,3 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
 ## 10. Open questions
 
 - Can trees act as walls for enclosure? (Water and hills can; trees are undecided.)
-- **Assumed in code, please confirm:**
-  - Trees block movement (like Pokémon), so players walk only on grass and on stumps of chopped trees.
-  - Fences can be built on stumps, and a tree can't regrow through a fence. When the fence is removed, the tree reappears if its regrow delay has passed.
-  - A fence can't be built on a tile where a player is standing.
