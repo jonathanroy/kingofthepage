@@ -1,3 +1,5 @@
+import "@fontsource/pixelify-sans/500.css";
+import "@fontsource/pixelify-sans/700.css";
 import Phaser from "phaser";
 import { Connection, tokenStorage } from "./net/connection";
 import { WorldScene } from "./render/worldScene";
@@ -7,10 +9,18 @@ import { Hud } from "./ui/hud";
 const world = new ClientWorld();
 const hud = new Hud();
 let game: Phaser.Game | null = null;
+let starting = false;
 let scene: WorldScene | null = null;
 let suggestedHandle = "";
 
-function startGame(): void {
+async function startGame(): Promise<void> {
+	if (game || starting) return;
+	starting = true;
+	// Name tags are drawn into the canvas, so the pixel font must be ready before the first one.
+	await Promise.race([
+		document.fonts.load('8px "Pixelify Sans"'),
+		new Promise((resolve) => setTimeout(resolve, 1500)),
+	]).catch(() => undefined);
 	if (game) return;
 	scene = new WorldScene({
 		world,
@@ -47,7 +57,7 @@ const connection = new Connection({
 				tokenStorage.set(msg.token);
 				hud.hideJoin();
 				if (world.me) hud.update(world.me);
-				startGame();
+				void startGame();
 				startTimers();
 				break;
 			case "joinRejected":

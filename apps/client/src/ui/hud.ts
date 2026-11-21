@@ -6,7 +6,19 @@ import type {
 	PlayerRef,
 } from "@kotp/shared/protocol";
 import { FENCE, fenceBuildCost, HANDLE } from "@kotp/shared/rules";
+import { drawCoinIcon, drawLogIcon } from "../art/effects";
+import { context, makeCanvas } from "../art/pixels";
 import type { Me } from "../state/clientWorld";
+
+function iconUrl(
+	width: number,
+	height: number,
+	draw: (ctx: CanvasRenderingContext2D) => void,
+): string {
+	const canvas = makeCanvas(width, height);
+	draw(context(canvas));
+	return canvas.toDataURL();
+}
 
 function el<T extends HTMLElement>(id: string): T {
 	const found = document.getElementById(id);
@@ -79,6 +91,9 @@ export class Hud {
 	private pendingConfirm: ((ok: boolean) => void) | null = null;
 
 	constructor() {
+		// The HUD icons are the same pixel art as the in-game "+2" and "+1" pop-ups.
+		el<HTMLImageElement>("icon-wood").src = iconUrl(7, 5, drawLogIcon);
+		el<HTMLImageElement>("icon-gold").src = iconUrl(5, 5, drawCoinIcon);
 		el("help").textContent =
 			`Arrows/WASD move · Space chop (hold) · F fence (${fenceBuildCost()}) · U repair/upgrade · G gate (+${FENCE.gateConversionCost})`;
 		el("confirm-yes").addEventListener("click", () => this.closeConfirm(true));
@@ -137,7 +152,7 @@ export class Hud {
 		el("hud-handle").textContent = me.handle;
 		el("hud-wood").textContent = String(me.wood);
 		el("hud-pos").textContent = `${me.x}, ${me.y}`;
-		el("hud-rate").textContent = me.goldPerMinute > 0 ? ` (+${me.goldPerMinute}/min)` : "";
+		el("hud-rate").textContent = me.goldPerMinute > 0 ? ` +${me.goldPerMinute}/min` : "";
 	}
 
 	updateGold(gold: number): void {

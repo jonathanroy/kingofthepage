@@ -107,7 +107,7 @@ Before saying a task is done, run `pnpm typecheck` and `pnpm test` and make sure
 - Top-down tile view in GameBoy-era Pokémon style. 16×16 pixel tiles and sprites.
 - Phaser config uses `pixelArt: true`. Scale only by integer factors so pixels stay crisp.
 - Limited palette per biome (grass, forest, lake, hills). Keep assets simple and readable: fence levels, gates, ownership borders and allies must be distinguishable at a glance.
-- Use placeholder colored tiles and sprites until real art exists; don't block gameplay work on assets.
+- Art is drawn in code in `apps/client/src/art` (plain canvas, no Phaser), with a dark outline, soft shading and joined tiles (shorelines, cliffs, wall runs). Keep new sprites in that style. Each sprite has a fixed sheet layout, so a hand-drawn PNG sheet can replace it later; don't block gameplay work on assets.
 
 ## Code conventions
 

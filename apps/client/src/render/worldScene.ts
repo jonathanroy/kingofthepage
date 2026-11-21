@@ -1,5 +1,5 @@
 import type { ClientMessage } from "@kotp/shared/protocol";
-import { FENCE_LEVELS, PACE, type Tile } from "@kotp/shared/rules";
+import { FENCE_LEVELS, type Fence, PACE } from "@kotp/shared/rules";
 import {
 	CHUNK_SIZE,
 	chunkKey,
@@ -10,9 +10,20 @@ import {
 	stepToward,
 } from "@kotp/shared/world";
 import Phaser from "phaser";
+import { playerFrame } from "../art/characters";
+import { groundKey } from "../art/ground";
+import { shade } from "../art/pixels";
+import { joinsMask, WALL_OVERHANG, type WallJoins, wantsPennant } from "../art/walls";
 import type { ClientWorld } from "../state/clientWorld";
-import { ownerColor } from "./palette";
-import { createTextures, TILE, TILE_FRAME } from "./textures";
+import { ownerColor, ownerColorHex } from "./palette";
+import {
+	createStaticTextures,
+	GroundTiles,
+	gateTexture,
+	playerSheet,
+	TILE,
+	wallTexture,
+} from "./textures";
 
 export type SceneDeps = {
 	readonly world: ClientWorld;
@@ -30,44 +41,38 @@ const ACTIONS: readonly string[] = ["chop", "build", "upgrade", "makeGate"];
 type FenceView = {
 	readonly img: Phaser.GameObjects.Image;
 	readonly cracks: Phaser.GameObjects.Image;
+	pennant: Phaser.GameObjects.Sprite | null;
+	fence: Fence;
+	open: boolean;
 };
 
 type ChunkView = {
-	readonly layer: Phaser.Tilemaps.TilemapLayer;
+	readonly texKey: string;
+	readonly tex: Phaser.Textures.CanvasTexture;
+	readonly ground: Phaser.GameObjects.Image;
 	readonly overlay: Phaser.GameObjects.Graphics;
+	readonly groundKeys: Map<string, string>;
 	readonly fences: Map<string, FenceView>;
+	readonly sparkles: Phaser.GameObjects.Sprite[];
+	dirty: boolean;
 };
 
 type PlayerView = {
 	readonly container: Phaser.GameObjects.Container;
 	readonly body: Phaser.GameObjects.Image;
 	readonly label: Phaser.GameObjects.Text;
+	dir: Direction;
+	moving: boolean;
 };
 
-const DEPTH = { terrain: 0, overlay: 1, fence: 2, player: 3 } as const;
+const DEPTH = { ground: 0, overlay: 1, sparkle: 2, fence: 3, player: 4, fx: 6 } as const;
 const REGROW_CHECK_MS = 1000;
 const MAX_QUEUED_INPUTS = 4;
 const TURN_PAUSE_MS = 120;
 const DIRECTIONS = ["up", "down", "left", "right"] as const;
-
-function frameFor(tile: Tile): number {
-	switch (tile.kind) {
-		case "grass":
-			return TILE_FRAME.grass;
-		case "tree":
-			return TILE_FRAME.tree;
-		case "water":
-			return TILE_FRAME.water;
-		case "hill":
-			return TILE_FRAME.hill;
-		case "mine":
-			return tile.size === "large" ? TILE_FRAME.mineLarge : TILE_FRAME.mineSmall;
-		case "stump":
-		case "fence":
-			// Fences are drawn as images on top of the ground they stand on.
-			return tile.kind === "fence" ? TILE_FRAME.grass : TILE_FRAME.stump;
-	}
-}
+const GLINT_EVERY_MS = 220;
+const MAX_GLINTS = 40;
+const LABEL_FONT = '"Pixelify Sans", ui-monospace, monospace';
 
 function parseKey(key: string): [number, number] {
 	return key.split(",").map(Number) as [number, number];
@@ -76,6 +81,9 @@ function parseKey(key: string): [number, number] {
 export class WorldScene extends Phaser.Scene {
 	private readonly chunkViews = new Map<string, ChunkView>();
 	private readonly playerViews = new Map<string, PlayerView>();
+	private readonly groundTiles = new GroundTiles();
+	/** Gates in loaded chunks, re-checked each frame to swing open for nearby allowed players. */
+	private readonly gateKeys = new Set<string>();
 	private me: PlayerView | null = null;
 	private keys!: {
 		up: Phaser.Input.Keyboard.Key[];
@@ -95,13 +103,20 @@ export class WorldScene extends Phaser.Scene {
 	private readonly confirmedAllyFences = new Set<string>();
 	private waitingForConfirm = false;
 	private lastRegrowCheck = 0;
+	private lastGlintAt = 0;
+	private glints = 0;
+	private lastWood: number | null = null;
+	private lastGold: number | null = null;
+	private lastGoldCheck = 0;
+	/** Players who asked their OS for less motion get no ambient effects. */
+	private readonly calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 	constructor(private readonly deps: SceneDeps) {
 		super("world");
 	}
 
 	create(): void {
-		createTextures(this);
+		createStaticTextures(this);
 		const kb = this.input.keyboard;
 		if (!kb) throw new Error("Keyboard input unavailable");
 		const K = Phaser.Input.Keyboard.KeyCodes;
@@ -140,6 +155,17 @@ export class WorldScene extends Phaser.Scene {
 			this.deps.world.markRegrowableStumps();
 		}
 		this.render();
+		this.animatePlayers(time);
+		this.updateGates();
+		this.flushChunkTextures();
+		if (!this.calm && time - this.lastGlintAt > GLINT_EVERY_MS) {
+			this.lastGlintAt = time;
+			this.spawnGlint();
+		}
+		if (time - this.lastGoldCheck > 500) {
+			this.lastGoldCheck = time;
+			this.checkGoldGain();
+		}
 	}
 
 	// ---------- Input ----------
@@ -197,6 +223,7 @@ export class WorldScene extends Phaser.Scene {
 		const isAllyFence = fence !== null && fence.ownerId !== me.id && world.isAlly(fence.ownerId);
 		if (!isAllyFence || this.confirmedAllyFences.has(key)) {
 			send({ type: "chop", seq: nextSeq(), confirmAlly: isAllyFence });
+			this.swingAxe();
 			return true;
 		}
 		this.waitingForConfirm = true;
@@ -249,84 +276,253 @@ export class WorldScene extends Phaser.Scene {
 		if (changes.alliancesChanged) this.refreshLabels();
 	}
 
+	// ---------- Ground ----------
+
 	private createChunk(key: string): void {
 		const { world } = this.deps;
 		const chunk = world.chunks.get(key);
-		if (!chunk) return;
+		const terrain = world.terrain;
+		if (!chunk || !terrain) return;
 		const origin = chunkOrigin(chunk.cx, chunk.cy);
-		const map = this.make.tilemap({
-			tileWidth: TILE,
-			tileHeight: TILE,
-			width: CHUNK_SIZE,
-			height: CHUNK_SIZE,
-		});
-		const tileset = map.addTilesetImage("tiles", "tiles", TILE, TILE, 0, 0);
-		if (!tileset) throw new Error("Tileset missing");
-		const layer = map.createBlankLayer(key, tileset, origin.x * TILE, origin.y * TILE);
-		if (!layer) throw new Error("Could not create chunk layer");
-		layer.setDepth(DEPTH.terrain);
+		const texKey = `ground-${key}`;
+		if (this.textures.exists(texKey)) this.textures.remove(texKey);
+		const size = CHUNK_SIZE * TILE;
+		const tex = this.textures.createCanvas(texKey, size, size);
+		if (!tex) throw new Error("Could not create chunk texture");
+		tex.context.imageSmoothingEnabled = false;
+		const ground = this.add
+			.image(origin.x * TILE, origin.y * TILE, texKey)
+			.setOrigin(0)
+			.setDepth(DEPTH.ground);
+		const overlay = this.add
+			.graphics({ x: origin.x * TILE, y: origin.y * TILE })
+			.setDepth(DEPTH.overlay);
+		const view: ChunkView = {
+			texKey,
+			tex,
+			ground,
+			overlay,
+			groundKeys: new Map(),
+			fences: new Map(),
+			sparkles: [],
+			dirty: true,
+		};
+		this.chunkViews.set(key, view);
 		for (let ly = 0; ly < CHUNK_SIZE; ly++) {
 			for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-				layer.putTileAt(frameFor(world.tileAt(origin.x + lx, origin.y + ly)), lx, ly);
+				const x = origin.x + lx;
+				const y = origin.y + ly;
+				const tile = world.tileAt(x, y);
+				this.paintGround(view, x, y, groundKey(tile, x, y, terrain));
+				if (tile.kind === "mine") this.addSparkles(view, x, y, tile.size === "large");
 			}
 		}
-		const overlay = this.add.graphics({ x: origin.x * TILE, y: origin.y * TILE });
-		overlay.setDepth(DEPTH.overlay);
-		const view: ChunkView = { layer, overlay, fences: new Map() };
-		this.chunkViews.set(key, view);
-		for (const [tk, diff] of chunk.diffs) if (diff.fence) this.redrawTile(tk);
+		for (const [tk, diff] of chunk.diffs) {
+			if (!diff.fence) continue;
+			this.updateFence(tk);
+			// Walls in the neighboring chunk may now join across the chunk edge.
+			const [fx, fy] = parseKey(tk);
+			for (const n of neighbors4(fx, fy)) {
+				if (this.viewOf(n.x, n.y) !== view && world.fenceAt(n.x, n.y))
+					this.updateFence(`${n.x},${n.y}`);
+			}
+		}
 		this.redrawOverlay(key);
+	}
+
+	private paintGround(view: ChunkView, x: number, y: number, gk: string): void {
+		const { cx, cy } = chunkOfTile(x, y);
+		const origin = chunkOrigin(cx, cy);
+		view.tex.context.drawImage(
+			this.groundTiles.get(gk),
+			(x - origin.x) * TILE,
+			(y - origin.y) * TILE,
+		);
+		view.groundKeys.set(`${x},${y}`, gk);
+		view.dirty = true;
+	}
+
+	/** Uploads each changed chunk canvas once per frame, however many tiles changed. */
+	private flushChunkTextures(): void {
+		for (const view of this.chunkViews.values()) {
+			if (!view.dirty) continue;
+			view.tex.refresh();
+			view.dirty = false;
+		}
+	}
+
+	private addSparkles(view: ChunkView, x: number, y: number, large: boolean): void {
+		if (this.calm) return;
+		const spots = large
+			? [
+					[5, 5],
+					[13, 12],
+					[9, 4],
+				]
+			: [[4, 6]];
+		for (const [sx, sy] of spots as [number, number][]) {
+			const sprite = this.add
+				.sprite(x * TILE + sx, y * TILE + sy, "sparkle")
+				.setDepth(DEPTH.sparkle)
+				.setVisible(false);
+			// Stagger so mines don't all twinkle in sync.
+			this.time.delayedCall(Math.random() * 1500, () => {
+				if (!sprite.active) return;
+				sprite.setVisible(true).play("sparkle");
+			});
+			view.sparkles.push(sprite);
+		}
 	}
 
 	private destroyChunk(key: string): void {
 		const view = this.chunkViews.get(key);
 		if (!view) return;
-		view.layer.tilemap.destroy();
+		view.ground.destroy();
 		view.overlay.destroy();
-		for (const f of view.fences.values()) {
-			f.img.destroy();
-			f.cracks.destroy();
+		for (const s of view.sparkles) s.destroy();
+		for (const [tk, f] of view.fences) {
+			this.destroyFenceView(f);
+			this.gateKeys.delete(tk);
 		}
+		this.textures.remove(view.texKey);
 		this.chunkViews.delete(key);
+	}
+
+	private viewOf(x: number, y: number): ChunkView | undefined {
+		const { cx, cy } = chunkOfTile(x, y);
+		return this.chunkViews.get(chunkKey(cx, cy));
 	}
 
 	private redrawTile(key: string): void {
 		const { world } = this.deps;
+		const terrain = world.terrain;
 		const [x, y] = parseKey(key);
-		const { cx, cy } = chunkOfTile(x, y);
-		const view = this.chunkViews.get(chunkKey(cx, cy));
-		if (!view) return;
-		const origin = chunkOrigin(cx, cy);
-		const tile = world.tileAt(x, y);
-		view.layer.putTileAt(frameFor(tile), x - origin.x, y - origin.y);
+		const view = this.viewOf(x, y);
+		if (!view || !terrain) return;
+		const gk = groundKey(world.tileAt(x, y), x, y, terrain);
+		const before = view.groundKeys.get(key);
+		if (gk !== before) {
+			this.paintGround(view, x, y, gk);
+			// A tree just fell: wood chips fly.
+			if ((before?.[0] === "t" || before?.[0] === "p") && gk[0] === "s") this.burstChips(x, y, 6);
+		}
+		this.updateFence(key);
+		// Neighbors may need to join or unjoin this tile's wall.
+		for (const n of neighbors4(x, y)) {
+			const nk = `${n.x},${n.y}`;
+			if (this.viewOf(n.x, n.y)?.fences.has(nk) || world.fenceAt(n.x, n.y)) this.updateFence(nk);
+		}
+	}
 
+	// ---------- Walls and gates ----------
+
+	private joinsAt(x: number, y: number, ownerId: string): WallJoins {
+		const same = (dx: number, dy: number) =>
+			this.deps.world.fenceAt(x + dx, y + dy)?.ownerId === ownerId;
+		return { n: same(0, -1), s: same(0, 1), w: same(-1, 0), e: same(1, 0) };
+	}
+
+	private updateFence(key: string): void {
+		const { world } = this.deps;
+		const [x, y] = parseKey(key);
+		const view = this.viewOf(x, y);
+		if (!view) return;
 		const existing = view.fences.get(key);
-		if (tile.kind !== "fence") {
-			existing?.img.destroy();
-			existing?.cracks.destroy();
+		const fence = world.fenceAt(x, y);
+		if (!fence) {
+			if (existing) this.destroyFenceView(existing);
 			view.fences.delete(key);
+			this.gateKeys.delete(key);
 			return;
 		}
-		const f = tile.fence;
-		const fv = existing ?? {
+		const joins = this.joinsAt(x, y, fence.ownerId);
+		const open = fence.gate && this.gateShouldOpen(x, y, fence);
+		const texture = fence.gate
+			? gateTexture(this, fence.level, open)
+			: wallTexture(this, fence.level, joinsMask(joins));
+		const top = y * TILE - WALL_OVERHANG;
+		const fv: FenceView = existing ?? {
 			img: this.add
-				.image(x * TILE, y * TILE, "fence-1")
+				.image(x * TILE, top, texture)
 				.setOrigin(0)
 				.setDepth(DEPTH.fence),
 			cracks: this.add
-				.image(x * TILE, y * TILE, "cracks")
+				.image(x * TILE, top, "cracks")
 				.setOrigin(0)
 				.setDepth(DEPTH.fence),
+			pennant: null,
+			fence,
+			open,
 		};
-		fv.img.setTexture(`${f.gate ? "gate" : "fence"}-${f.level}`);
-		fv.img.setTint(ownerColor(f.ownerId, world.me?.id));
-		// Damage shows as cracks that darken as the fence nears breaking (§3).
-		const needed = FENCE_LEVELS[f.level - 1]?.chopsToBreak ?? 1;
-		fv.cracks.setVisible(f.damage > 0).setAlpha(Math.min(1, 0.35 + (0.65 * f.damage) / needed));
+		fv.img.setTexture(texture);
+		// Damage: cracks deepen as the fence nears breaking (§3), and a fresh hit shakes it.
+		const needed = FENCE_LEVELS[fence.level - 1]?.chopsToBreak ?? 1;
+		fv.cracks
+			.setVisible(fence.damage > 0)
+			.setAlpha(Math.min(1, 0.3 + (0.7 * fence.damage) / needed));
+		if (existing && fence.damage > existing.fence.damage) this.hitWall(fv, x, y);
+		this.setPennant(fv, x, y, fence, fence.gate || wantsPennant(joins));
+		fv.fence = fence;
+		fv.open = open;
 		view.fences.set(key, fv);
+		if (fence.gate) this.gateKeys.add(key);
+		else this.gateKeys.delete(key);
 	}
 
-	/** Tinted fill for each controlled tile, with a solid edge where ownership changes. */
+	/** Pennants show who owns a wall: on corners, ends and gates, in the owner's color. */
+	private setPennant(fv: FenceView, x: number, y: number, fence: Fence, wanted: boolean): void {
+		if (!wanted) {
+			fv.pennant?.destroy();
+			fv.pennant = null;
+			return;
+		}
+		const postTop = fence.gate ? (fence.level >= 3 ? 2 : 4) : fence.level <= 2 ? 4 : 2;
+		const px = fence.gate ? x * TILE + 2 : x * TILE + 8;
+		if (!fv.pennant) {
+			fv.pennant = this.add
+				.sprite(px, y * TILE + postTop, "pennant")
+				.setOrigin(0, 1)
+				.setDepth(DEPTH.fence);
+			if (!this.calm)
+				fv.pennant.play({ key: "pennant", startFrame: Math.floor(Math.random() * 2) });
+		}
+		fv.pennant.setPosition(px, y * TILE + postTop);
+		fv.pennant.setTint(ownerColor(fence.ownerId, this.deps.world.me?.id));
+	}
+
+	private destroyFenceView(fv: FenceView): void {
+		fv.img.destroy();
+		fv.cracks.destroy();
+		fv.pennant?.destroy();
+	}
+
+	/** A gate swings open while someone stands in it, or when you or an ally of its owner is next to it. */
+	private gateShouldOpen(x: number, y: number, fence: Fence): boolean {
+		const { world } = this.deps;
+		const me = world.me;
+		const standing = (px: number, py: number) =>
+			(me && me.x === px && me.y === py) ||
+			[...world.players.values()].some((p) => p.x === px && p.y === py);
+		if (standing(x, y)) return true;
+		if (!me || (fence.ownerId !== me.id && !world.isAlly(fence.ownerId))) return false;
+		return Math.abs(me.x - x) + Math.abs(me.y - y) === 1;
+	}
+
+	private updateGates(): void {
+		for (const key of this.gateKeys) {
+			const [x, y] = parseKey(key);
+			const fv = this.viewOf(x, y)?.fences.get(key);
+			if (!fv) continue;
+			const open = this.gateShouldOpen(x, y, fv.fence);
+			if (open === fv.open) continue;
+			fv.open = open;
+			fv.img.setTexture(gateTexture(this, fv.fence.level, open));
+		}
+	}
+
+	// ---------- Land ----------
+
+	/** A light tint over owned land and a dashed border in the owner's color. */
 	private redrawOverlay(key: string): void {
 		const { world } = this.deps;
 		const view = this.chunkViews.get(key);
@@ -337,36 +533,47 @@ export class WorldScene extends Phaser.Scene {
 		const origin = chunkOrigin(chunk.cx, chunk.cy);
 		for (const [tk, owner] of chunk.control) {
 			const [x, y] = parseKey(tk);
-			const color = ownerColor(owner, world.me?.id);
+			const hex = ownerColorHex(owner, world.me?.id);
+			const border = Number.parseInt(shade(hex, 0.7).slice(1), 16);
 			const lx = (x - origin.x) * TILE;
 			const ly = (y - origin.y) * TILE;
-			g.fillStyle(color, 0.28);
+			g.fillStyle(Number.parseInt(hex.slice(1), 16), 0.16);
 			g.fillRect(lx, ly, TILE, TILE);
-			g.fillStyle(color, 0.9);
+			g.fillStyle(border, 0.95);
 			const [up, right, down, left] = neighbors4(x, y).map((n) => world.controllerAt(n.x, n.y));
-			if (up !== owner) g.fillRect(lx, ly, TILE, 2);
-			if (down !== owner) g.fillRect(lx, ly + TILE - 2, TILE, 2);
-			if (left !== owner) g.fillRect(lx, ly, 2, TILE);
-			if (right !== owner) g.fillRect(lx + TILE - 2, ly, 2, TILE);
+			for (let i = 0; i < TILE; i += 4) {
+				if (up !== owner) g.fillRect(lx + i, ly + 1, 2, 1);
+				if (down !== owner) g.fillRect(lx + i, ly + TILE - 2, 2, 1);
+				if (left !== owner) g.fillRect(lx + 1, ly + i, 1, 2);
+				if (right !== owner) g.fillRect(lx + TILE - 2, ly + i, 1, 2);
+			}
 		}
 	}
 
-	private makePlayerView(id: string, handle: string, x: number, y: number): PlayerView {
-		const body = this.add.image(0, 0, "player-down").setOrigin(0);
-		body.setTint(ownerColor(id, this.deps.world.me?.id));
+	// ---------- Players ----------
+
+	private makePlayerView(
+		id: string,
+		handle: string,
+		x: number,
+		y: number,
+		dir: Direction,
+	): PlayerView {
+		const sheet = playerSheet(this, ownerColorHex(id, this.deps.world.me?.id));
+		const body = this.add.image(0, 0, sheet, playerFrame(dir, 0)).setOrigin(0);
 		const label = this.add
 			.text(TILE / 2, -2, this.deps.world.isAlly(id) ? `♥ ${handle}` : handle, {
-				fontFamily: "monospace",
+				fontFamily: LABEL_FONT,
 				fontSize: "8px",
 				color: this.labelColor(id),
-				stroke: "#0f380f",
+				stroke: "#2b2233",
 				strokeThickness: 2,
 				resolution: 4,
 			})
 			.setOrigin(0.5, 1);
 		const container = this.add.container(x * TILE, y * TILE, [body, label]);
 		container.setDepth(DEPTH.player);
-		return { container, body, label };
+		return { container, body, label, dir, moving: false };
 	}
 
 	/** Gold for you, green for allies, white for everyone else: allies must stand out (CLAUDE.md). */
@@ -385,20 +592,38 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	private glide(view: PlayerView, x: number, y: number): void {
+		const fromX = view.container.x;
+		const fromY = view.container.y;
+		const dx = Math.abs(fromX - x * TILE);
+		const dy = Math.abs(fromY - y * TILE);
+		if (dx + dy === 0) return;
 		this.tweens.killTweensOf(view.container);
-		const dx = Math.abs(view.container.x - x * TILE);
-		const dy = Math.abs(view.container.y - y * TILE);
 		// Teleports (respawn, correction over several tiles) snap instead of sliding.
 		if (dx + dy > TILE * 2) {
 			view.container.setPosition(x * TILE, y * TILE);
+			view.moving = false;
 			return;
 		}
+		view.moving = true;
+		this.puffDust(fromX, fromY);
 		this.tweens.add({
 			targets: view.container,
 			x: x * TILE,
 			y: y * TILE,
 			duration: PACE.moveIntervalMs,
+			onComplete: () => {
+				view.moving = false;
+			},
 		});
+	}
+
+	/** Walk cycle while gliding, standing frame otherwise. Two steps per tile. */
+	private animatePlayers(time: number): void {
+		const step = Math.floor(time / (PACE.moveIntervalMs / 2));
+		const all = this.me ? [...this.playerViews.values(), this.me] : [...this.playerViews.values()];
+		for (const view of all) {
+			view.body.setFrame(playerFrame(view.dir, view.moving ? step : 0));
+		}
 	}
 
 	private updatePlayer(id: string): void {
@@ -406,10 +631,10 @@ export class WorldScene extends Phaser.Scene {
 		if (!p) return;
 		let view = this.playerViews.get(id);
 		if (!view) {
-			view = this.makePlayerView(p.id, p.handle, p.x, p.y);
+			view = this.makePlayerView(p.id, p.handle, p.x, p.y, p.facing);
 			this.playerViews.set(id, view);
 		}
-		view.body.setTexture(`player-${p.facing}`);
+		view.dir = p.facing;
 		this.glide(view, p.x, p.y);
 	}
 
@@ -422,13 +647,159 @@ export class WorldScene extends Phaser.Scene {
 		const me = this.deps.world.me;
 		if (!me) return;
 		if (!this.me) {
-			this.me = this.makePlayerView(me.id, me.handle, me.x, me.y);
+			this.me = this.makePlayerView(me.id, me.handle, me.x, me.y, me.facing);
 			this.me.container.setDepth(DEPTH.player + 1);
 			this.cameras.main.startFollow(this.me.container, true);
 		}
-		this.me.body.setTexture(`player-${me.facing}`);
+		this.me.dir = me.facing;
 		this.glide(this.me, me.x, me.y);
+		if (this.lastWood !== null && me.wood > this.lastWood)
+			this.floatGain(`+${me.wood - this.lastWood}`, "log");
+		this.lastWood = me.wood;
 		this.deps.onMeChanged();
+	}
+
+	// ---------- Effects ----------
+
+	private swingAxe(): void {
+		const view = this.me;
+		const me = this.deps.world.me;
+		if (!view || !me) return;
+		const offsets: Record<Direction, [number, number, boolean]> = {
+			right: [12, 6, false],
+			left: [-4, 6, true],
+			down: [10, 10, false],
+			up: [10, -2, false],
+		};
+		const [ox, oy, flip] = offsets[me.facing];
+		const axe = this.add
+			.image(view.container.x + ox, view.container.y + oy, "axe")
+			.setOrigin(0)
+			.setFlipX(flip)
+			.setDepth(DEPTH.fx);
+		this.tweens.add({
+			targets: axe,
+			angle: flip ? -35 : 35,
+			yoyo: true,
+			duration: 80,
+			onComplete: () => axe.destroy(),
+		});
+	}
+
+	private burstChips(x: number, y: number, count: number): void {
+		if (this.calm) return;
+		for (let i = 0; i < count; i++) {
+			const chip = this.add.image(x * TILE + 8, y * TILE + 8, "chip").setDepth(DEPTH.fx);
+			const angle = (Math.PI * 2 * i) / count + Math.random() * 0.6;
+			this.tweens.add({
+				targets: chip,
+				x: chip.x + Math.cos(angle) * (6 + Math.random() * 6),
+				y: chip.y + Math.sin(angle) * 6 - 4,
+				alpha: 0,
+				duration: 350 + Math.random() * 150,
+				ease: "Quad.easeOut",
+				onComplete: () => chip.destroy(),
+			});
+		}
+	}
+
+	private hitWall(fv: FenceView, x: number, y: number): void {
+		this.burstChips(x, y, 3);
+		if (this.calm) return;
+		this.tweens.add({
+			targets: [fv.img, fv.cracks],
+			x: x * TILE + 1,
+			yoyo: true,
+			duration: 40,
+			repeat: 1,
+			onComplete: () => {
+				fv.img.setX(x * TILE);
+				fv.cracks.setX(x * TILE);
+			},
+		});
+	}
+
+	private puffDust(x: number, y: number): void {
+		if (this.calm) return;
+		const dust = this.add
+			.image(x + 6, y + 13, "dust")
+			.setOrigin(0)
+			.setDepth(DEPTH.player - 0.5)
+			.setAlpha(0.7);
+		this.tweens.add({
+			targets: dust,
+			alpha: 0,
+			y: dust.y - 2,
+			duration: 300,
+			onComplete: () => dust.destroy(),
+		});
+	}
+
+	/** "+2" with an icon rising above your head: wood from a chop, gold from your mines. */
+	private floatGain(text: string, icon: "log" | "coin"): void {
+		const view = this.me;
+		if (!view) return;
+		const x = view.container.x + 2;
+		const y = view.container.y - 12;
+		const img = this.add.image(x, y, icon).setOrigin(0, 0.5).setDepth(DEPTH.fx);
+		const label = this.add
+			.text(x + 9, y, text, {
+				fontFamily: LABEL_FONT,
+				fontSize: "8px",
+				color: icon === "coin" ? "#fff3b0" : "#ffffff",
+				stroke: "#2b2233",
+				strokeThickness: 2,
+				resolution: 4,
+			})
+			.setOrigin(0, 0.5)
+			.setDepth(DEPTH.fx);
+		this.tweens.add({
+			targets: [img, label],
+			y: y - (this.calm ? 0 : 10),
+			alpha: { from: 1, to: 0 },
+			delay: 250,
+			duration: 700,
+			onComplete: () => {
+				img.destroy();
+				label.destroy();
+			},
+		});
+	}
+
+	private checkGoldGain(): void {
+		const gold = Math.floor(this.deps.world.liveGold());
+		if (this.lastGold !== null && gold > this.lastGold)
+			this.floatGain(`+${gold - this.lastGold}`, "coin");
+		this.lastGold = gold;
+	}
+
+	/** Brief sparkles on water in view; cheaper than redrawing the water itself. */
+	private spawnGlint(): void {
+		if (this.glints >= MAX_GLINTS) return;
+		const view = this.cameras.main.worldView;
+		const x = Math.floor((view.x + Math.random() * view.width) / TILE);
+		const y = Math.floor((view.y + Math.random() * view.height) / TILE);
+		if (this.deps.world.tileAt(x, y).kind !== "water") return;
+		const glint = this.add
+			.image(
+				x * TILE + 3 + Math.floor(Math.random() * 9),
+				y * TILE + 4 + Math.floor(Math.random() * 9),
+				"glint",
+			)
+			.setOrigin(0)
+			.setDepth(DEPTH.sparkle)
+			.setAlpha(0);
+		this.glints++;
+		this.tweens.add({
+			targets: glint,
+			alpha: 0.9,
+			yoyo: true,
+			duration: 450,
+			onComplete: () => {
+				glint.destroy();
+				this.glints--;
+			},
+		});
 	}
 
 	private applyZoom(): void {
