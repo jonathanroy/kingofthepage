@@ -10,8 +10,10 @@ import {
 	chopsToBreak,
 	fenceBuildCost,
 	fenceRefund,
+	improveFence,
 	makeGate,
 	needsAllyConfirmation,
+	repairCost,
 	upgradeCost,
 	upgradeFence,
 } from "./fences";
@@ -47,8 +49,8 @@ describe("canPlaceFence (§3 Building)", () => {
 
 describe("upgrades", () => {
 	it("follows the level table and tracks wood invested", () => {
-		const f = upgradeTo(4);
-		expect(f.level).toBe(4);
+		const f = upgradeTo(10);
+		expect(f.level).toBe(10);
 		expect(f.woodInvested).toBe(FENCE_LEVELS.reduce((sum, l) => sum + l.cost, 0));
 		expect(upgradeCost(f)).toBeNull();
 		expect(() => upgradeFence(f)).toThrow();
@@ -72,6 +74,7 @@ describe("fenceRefund", () => {
 		expect(fenceRefund(buildFence("owner"))).toBe(1); // 2 → 1
 		expect(fenceRefund(upgradeTo(2))).toBe(2); // 5 → 2
 		expect(fenceRefund(upgradeTo(4))).toBe(9); // 18 → 9
+		expect(fenceRefund(upgradeTo(10))).toBe(92); // 185 → 92
 	});
 });
 
@@ -109,12 +112,41 @@ describe("upgrades repair (§3)", () => {
 			ok: false,
 			reason: "notYourFence",
 		});
-		expect(canUpgradeFence(upgradeTo(4), "owner", 99)).toEqual({ ok: false, reason: "maxLevel" });
+		expect(canUpgradeFence(upgradeTo(10), "owner", 999)).toEqual({ ok: false, reason: "maxLevel" });
 		expect(canUpgradeFence(buildFence("owner"), "owner", 2)).toEqual({
 			ok: false,
 			reason: "notEnoughWood",
 		});
-		expect(canUpgradeFence(buildFence("owner"), "owner", 3)).toEqual({ ok: true, cost: 3 });
+		expect(canUpgradeFence(buildFence("owner"), "owner", 3)).toEqual({
+			ok: true,
+			kind: "upgrade",
+			cost: 3,
+		});
+	});
+});
+
+describe("repair at max level (§3)", () => {
+	it("has ten levels", () => {
+		expect(FENCE_LEVELS).toHaveLength(10);
+		expect(upgradeCost(upgradeTo(10))).toBeNull();
+	});
+
+	it("costs wood per chop of damage, rounded up, and only clears damage", () => {
+		const damaged = { ...upgradeTo(10), damage: 7 };
+		expect(repairCost(damaged)).toBe(Math.ceil(7 * FENCE.repairWoodPerChop));
+		expect(canUpgradeFence(damaged, "owner", 999)).toEqual({
+			ok: true,
+			kind: "repair",
+			cost: repairCost(damaged),
+		});
+		expect(canUpgradeFence(damaged, "owner", 0)).toEqual({ ok: false, reason: "notEnoughWood" });
+		const repaired = improveFence(damaged);
+		expect(repaired).toMatchObject({ level: 10, damage: 0, woodInvested: damaged.woodInvested });
+	});
+
+	it("still upgrades (and repairs) below the max level", () => {
+		const damaged = { ...upgradeTo(9), damage: 4 };
+		expect(improveFence(damaged)).toMatchObject({ level: 10, damage: 0 });
 	});
 });
 

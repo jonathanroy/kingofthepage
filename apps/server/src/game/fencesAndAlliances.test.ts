@@ -89,6 +89,33 @@ describe("upgrades (§3 Upgrade levels)", () => {
 		});
 	});
 
+	it("repairs a damaged max-level fence for wood", () => {
+		const { h, ownerId, otherId } = setupPair();
+		buildRing(h, ownerId, 0, 0, 1);
+		h.relocate(ownerId, 0, -2, "down");
+		let t = h.now();
+		const later = (ms: number) => {
+			t += ms;
+			return t;
+		};
+		for (let level = 1; level < FENCE_LEVELS.length; level++) {
+			expect(h.world.upgrade(ownerId, later(ACT)).ok).toBe(true);
+		}
+		expect(fenceAt(h, 0, -1).level).toBe(FENCE_LEVELS.length);
+		h.relocate(ownerId, 9, 9, "down");
+		h.relocate(otherId, 0, -2, "down");
+		for (let i = 0; i < 6; i++) h.world.chop(otherId, later(ACT));
+		h.relocate(otherId, 9, 8, "down");
+		h.relocate(ownerId, 0, -2, "down");
+		const owner = h.world.playerById(ownerId);
+		if (!owner) throw new Error("missing");
+		const wood = owner.wood;
+		expect(h.world.upgrade(ownerId, later(ACT)).ok).toBe(true);
+		expect(fenceAt(h, 0, -1)).toMatchObject({ level: FENCE_LEVELS.length, damage: 0 });
+		expect(owner.wood).toBe(wood - Math.ceil(6 * FENCE.repairWoodPerChop));
+		expect(h.world.upgrade(ownerId, later(ACT))).toMatchObject({ ok: false, reason: "maxLevel" });
+	});
+
 	it("needs more chops at higher levels", () => {
 		const { h, ownerId, otherId } = setupPair();
 		buildRing(h, ownerId, 0, 0, 1);

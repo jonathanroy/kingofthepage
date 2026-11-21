@@ -23,6 +23,7 @@ import {
 	type FenceLevel,
 	fenceBuildCost,
 	fillRegion,
+	improveFence,
 	isWalkableFor,
 	LandRegistry,
 	landScores,
@@ -37,7 +38,6 @@ import {
 	type Tile,
 	type TileDiff,
 	type TileView,
-	upgradeFence,
 	woodFromTree,
 } from "@kotp/shared/rules";
 import {
@@ -457,7 +457,7 @@ export class World {
 		return { ok: true, events: [...events, { kind: "inventory", id: p.id }, ...control] };
 	}
 
-	/** §3: the owner upgrades the fence they face; upgrading also repairs it. */
+	/** §3: the owner upgrades the fence they face (which repairs it); at max level this only repairs. */
 	upgrade(id: string, now: number): ActionResult {
 		const p = this.requirePlayer(id);
 		const target = stepToward(p.x, p.y, p.facing);
@@ -468,7 +468,7 @@ export class World {
 		if (!check.ok) return { ok: false, reason: check.reason, events: [] };
 		p.wood -= check.cost;
 		this.dirtyPlayers.add(id);
-		this.updateDiff(target.x, target.y, { fence: upgradeFence(tile.fence) });
+		this.updateDiff(target.x, target.y, { fence: improveFence(tile.fence) });
 		return {
 			ok: true,
 			events: [

@@ -128,7 +128,94 @@ function fenceL4(ctx: Ctx): void {
 	for (let x = 1; x < 16; x += 4) px(ctx, "#a0a0a0", x, 5, 1, 1);
 }
 
-const FENCE_DRAWERS = [fenceL1, fenceL2, fenceL3, fenceL4] as const;
+// Levels 5+ are masonry and metal. Colors stay light and neutral so the owner tint reads;
+// the pattern tells the material apart.
+const STONE = "#d8d8d8";
+const MORTAR = "#8a8a8a";
+
+/** Level 5, stone wall: staggered grey blocks. */
+function fenceL5(ctx: Ctx): void {
+	px(ctx, STONE, 0, 3, 16, 12);
+	for (const y of [7, 11]) px(ctx, MORTAR, 0, y, 16, 1);
+	for (const [x, y] of [
+		[5, 3],
+		[11, 3],
+		[2, 8],
+		[8, 8],
+		[14, 8],
+		[5, 12],
+		[11, 12],
+	] as const) {
+		px(ctx, MORTAR, x, y, 1, 3);
+	}
+}
+
+/** Level 6, brick wall: small regular bricks. */
+function fenceL6(ctx: Ctx): void {
+	px(ctx, STONE, 0, 2, 16, 13);
+	for (let y = 4; y < 15; y += 3) px(ctx, MORTAR, 0, y, 16, 1);
+	for (let row = 0; row < 4; row++) {
+		for (let x = row % 2 === 0 ? 3 : 0; x < 16; x += 6) px(ctx, MORTAR, x, 2 + row * 3, 1, 2);
+	}
+}
+
+/** Level 7, fortified wall: stone with battlements on top. */
+function fenceL7(ctx: Ctx): void {
+	fenceL5(ctx);
+	ctx.clearRect(0, 0, 16, 3);
+	for (let x = 0; x < 16; x += 4) px(ctx, STONE, x, 0, 3, 3);
+}
+
+/** Level 8, iron-bound wall: battlements plus dark iron bands with rivets. */
+function fenceL8(ctx: Ctx): void {
+	fenceL7(ctx);
+	for (const y of [6, 11]) {
+		px(ctx, "#404040", 0, y, 16, 2);
+		for (let x = 1; x < 16; x += 3) px(ctx, "#b0b0b0", x, y, 1, 1);
+	}
+}
+
+/** Level 9, steel wall: smooth plates with seams and rivets. */
+function fenceL9(ctx: Ctx): void {
+	px(ctx, "#f0f0f0", 0, 1, 16, 14);
+	px(ctx, "#9a9a9a", 0, 1, 16, 1);
+	px(ctx, "#9a9a9a", 0, 14, 16, 1);
+	for (const x of [5, 10]) px(ctx, "#9a9a9a", x, 1, 1, 14);
+	for (const [x, y] of [
+		[2, 3],
+		[7, 3],
+		[13, 3],
+		[2, 12],
+		[7, 12],
+		[13, 12],
+	] as const) {
+		px(ctx, "#606060", x, y, 1, 1);
+	}
+}
+
+/** Level 10, King's wall: steel with gold trim and a crown, the strongest wall in the game. */
+function fenceL10(ctx: Ctx): void {
+	fenceL9(ctx);
+	px(ctx, "#ffd60a", 0, 1, 16, 2);
+	px(ctx, "#ffd60a", 0, 13, 16, 2);
+	// Crown.
+	px(ctx, "#ffd60a", 5, 7, 6, 3);
+	for (const x of [5, 7, 9]) px(ctx, "#ffd60a", x + (x === 9 ? 1 : 0), 5, 1, 2);
+	px(ctx, "#e63946", 7, 8, 2, 1);
+}
+
+const FENCE_DRAWERS = [
+	fenceL1,
+	fenceL2,
+	fenceL3,
+	fenceL4,
+	fenceL5,
+	fenceL6,
+	fenceL7,
+	fenceL8,
+	fenceL9,
+	fenceL10,
+] as const;
 
 /** A gate: the level's fence with a doorway cut in the middle and dark hinges. */
 function gate(ctx: Ctx, level: number): void {

@@ -57,6 +57,12 @@ Every fence starts basic and can be upgraded by its owner. Each level increases 
 | 2     | 6              | +3 wood        | Plank fence         |
 | 3     | 12             | +5 wood        | Log palisade        |
 | 4     | 20             | +8 wood        | Reinforced palisade |
+| 5     | 30             | +12 wood       | Stone wall          |
+| 6     | 42             | +17 wood       | Brick wall          |
+| 7     | 56             | +23 wood       | Fortified wall      |
+| 8     | 72             | +30 wood       | Iron-bound wall     |
+| 9     | 90             | +38 wood       | Steel wall          |
+| 10    | 110            | +47 wood       | King's wall         |
 
 _(All values tunable.)_
 
@@ -71,6 +77,7 @@ _(All values tunable.)_
 - Breaking any fence, **your own or someone else's**, returns **50% of the total wood invested** in it (build + upgrades), rounded down.
 - **Damage persists:** chops on a fence add up until it breaks, even across sessions and from different attackers. Nothing heals it except an upgrade.
 - **Upgrading repairs:** upgrading a fence resets its damage to zero, so spending wood is the defender's answer to an attack in progress.
+- **Repairing at max level:** a level-10 fence can't be upgraded, so the owner spends wood to repair it instead: 1 wood per 2 chops of damage, rounded up _(tunable)_. Repairs don't count as wood invested, so they don't raise the 50% refund.
 
 ### Gates
 
@@ -205,4 +212,3 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
   - Trees block movement (like Pokémon), so players walk only on grass and on stumps of chopped trees.
   - Fences can be built on stumps, and a tree can't regrow through a fence. When the fence is removed, the tree reappears if its regrow delay has passed.
   - A fence can't be built on a tile where a player is standing.
-- **Repairing max-level fences:** upgrading is the only repair and damage never heals, so a level-4 fence can only get weaker over time. Allow a paid repair at max level, or let damage heal slowly?

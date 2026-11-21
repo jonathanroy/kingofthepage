@@ -37,15 +37,46 @@ export function upgradeCost(fence: Fence): number | null {
 }
 
 export type FenceUpgrade =
-	| { readonly ok: true; readonly cost: number }
-	| { readonly ok: false; readonly reason: "notYourFence" | "maxLevel" | "notEnoughWood" };
+	| { readonly ok: true; readonly kind: "upgrade" | "repair"; readonly cost: number }
+	| {
+			readonly ok: false;
+			readonly reason: "notYourFence" | "maxLevel" | "notEnoughWood";
+	  };
 
+/**
+ * §3: the owner's "improve" action. Below the max level it upgrades (which also repairs);
+ * at the max level it only repairs, for wood proportional to the damage.
+ */
 export function canUpgradeFence(fence: Fence, actorId: PlayerId, wood: number): FenceUpgrade {
 	if (fence.ownerId !== actorId) return { ok: false, reason: "notYourFence" };
-	const cost = upgradeCost(fence);
-	if (cost === null) return { ok: false, reason: "maxLevel" };
-	if (wood < cost) return { ok: false, reason: "notEnoughWood" };
-	return { ok: true, cost };
+	const upgrade = upgradeCost(fence);
+	if (upgrade === null) {
+		const repair = repairCost(fence);
+		if (repair === 0) return { ok: false, reason: "maxLevel" };
+		if (wood < repair) return { ok: false, reason: "notEnoughWood" };
+		return { ok: true, kind: "repair", cost: repair };
+	}
+	if (wood < upgrade) return { ok: false, reason: "notEnoughWood" };
+	return { ok: true, kind: "upgrade", cost: upgrade };
+}
+
+export function isMaxLevel(fence: Fence): boolean {
+	return fence.level >= MAX_LEVEL;
+}
+
+/** Wood to clear a fence's damage; 0 when undamaged. */
+export function repairCost(fence: Fence): number {
+	return Math.ceil(fence.damage * FENCE.repairWoodPerChop);
+}
+
+/** Repair isn't an investment: it doesn't raise the 50% refund. */
+export function repairFence(fence: Fence): Fence {
+	return { ...fence, damage: 0 };
+}
+
+/** Applies whichever improvement `canUpgradeFence` allowed. */
+export function improveFence(fence: Fence): Fence {
+	return isMaxLevel(fence) ? repairFence(fence) : upgradeFence(fence);
 }
 
 /** §3: one level up. Also repairs all damage, the defender's answer to an attack in progress. */
