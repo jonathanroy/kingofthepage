@@ -15,7 +15,7 @@ export type GameDeps = {
 	readonly hashToken: (token: string) => string;
 };
 
-type Intent = Extract<ClientMessage, { type: "move" | "chop" | "build" }>;
+type Intent = Extract<ClientMessage, { type: "move" | "turn" | "chop" | "build" }>;
 
 type Session = {
 	readonly id: string;
@@ -86,7 +86,12 @@ export class Game {
 			if (!player) continue;
 			while (session.queue.length > 0) {
 				const intent = session.queue[0] as Intent;
-				const readyAt = intent.type === "move" ? player.nextMoveAt : player.nextActionAt;
+				const readyAt =
+					intent.type === "turn"
+						? 0
+						: intent.type === "move"
+							? player.nextMoveAt
+							: player.nextActionAt;
 				if (now < readyAt) break;
 				session.queue.shift();
 				this.runIntent(session, player, intent, now);
@@ -194,6 +199,9 @@ export class Game {
 		switch (intent.type) {
 			case "move":
 				result = world.move(player.id, intent.dir, now);
+				break;
+			case "turn":
+				result = world.turn(player.id, intent.dir);
 				break;
 			case "chop":
 				result = world.chop(player.id, now);

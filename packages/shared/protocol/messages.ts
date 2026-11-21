@@ -12,6 +12,8 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("join"), handle: z.string().max(64) }),
 	z.object({ type: z.literal("resume"), token: z.string().min(1).max(128) }),
 	z.object({ type: z.literal("move"), dir: DirectionSchema, seq }),
+	/** Face a direction without moving, e.g. to build on an empty tile. */
+	z.object({ type: z.literal("turn"), dir: DirectionSchema, seq }),
 	/** Chop whatever the player faces: tree or fence. */
 	z.object({ type: z.literal("chop"), seq }),
 	/** Build a fence on the tile the player faces. */

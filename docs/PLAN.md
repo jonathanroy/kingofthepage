@@ -41,12 +41,12 @@ Status: ☐ not started · ◐ in progress · ☑ done
 - Status: done and tested with an in-memory store. Postgres store written and migrated (`drizzle/0000_init.sql`) but not yet run against a live database.
 - MVP simplification: the whole world state (players, fences, chops, enclosures) is loaded into memory at boot and flushed in batches every 2 s and on shutdown, instead of per-chunk loading. Revisit if the stored world grows large.
 
-## M4. Client (placeholder art) ☐
+## M4. Client (placeholder art) ☑
 
 - Phaser, `pixelArt: true`, integer zoom, 16×16 tiles.
 - Terrain generated locally from the seed per 32×32 chunk; server diffs applied on top.
 - Predicted movement with reconciliation.
-- Controls: arrows/WASD to move; chop and build act on the faced tile.
+- Controls: arrows/WASD to move (a tap in a new direction turns in place, Pokémon-style, via a `turn` intent); Space chops and F builds on the faced tile.
 - UI: handle picker with suggested name, wood counter, colored ownership overlay, other players with name tags.
 - Own-fence removal (1 chop, 50% refund) is pulled forward from "Next" so breach detection is playable in the MVP.
 - **End of M4 = MVP.**

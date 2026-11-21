@@ -309,6 +309,14 @@ export class World {
 		return { ok: true, events };
 	}
 
+	turn(id: string, dir: Direction): ActionResult {
+		const p = this.requirePlayer(id);
+		if (p.facing === dir) return { ok: true, events: [] };
+		p.facing = dir;
+		this.dirtyPlayers.add(id);
+		return { ok: true, events: [{ kind: "player", id, fromX: p.x, fromY: p.y }] };
+	}
+
 	chop(id: string, now: number): ActionResult {
 		const p = this.requirePlayer(id);
 		const target = stepToward(p.x, p.y, p.facing);

@@ -120,6 +120,16 @@ describe("movement (§1, §5 Access)", () => {
 		}
 	});
 
+	it("turns in place without moving, so players can face an empty tile", () => {
+		const h = createHarness();
+		const c = h.client();
+		const id = c.join("Marco");
+		h.relocate(id, 0, 0, "down");
+		c.send({ type: "turn", dir: "left", seq: 1 });
+		h.tick();
+		expect(h.world.playerById(id)).toMatchObject({ x: 0, y: 0, facing: "left" });
+	});
+
 	it("drops intents beyond the queue limit", () => {
 		const h = createHarness();
 		const c = h.client();

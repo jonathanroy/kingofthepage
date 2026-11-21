@@ -9,7 +9,7 @@
 	},
 	"dependencies": {
 		"@kotp/shared": "workspace:*",
-		"phaser": "^4.2.1"
+		"phaser": "^3.90.0"
 	},
 	"devDependencies": {
 		"vite": "^8.3.8"
