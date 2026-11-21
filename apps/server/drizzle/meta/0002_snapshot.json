@@ -1,0 +1,424 @@
+{
+  "id": "00a99f78-8669-4959-9de1-5d1188d30d52",
+  "prevId": "9312e8a8-2841-4daf-bc11-5f070a48f40e",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.alliances": {
+      "name": "alliances",
+      "schema": "",
+      "columns": {
+        "player_a": {
+          "name": "player_a",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "player_b": {
+          "name": "player_b",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "alliances_player_a_players_id_fk": {
+          "name": "alliances_player_a_players_id_fk",
+          "tableFrom": "alliances",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_a"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "alliances_player_b_players_id_fk": {
+          "name": "alliances_player_b_players_id_fk",
+          "tableFrom": "alliances",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_b"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "alliances_player_a_player_b_pk": {
+          "name": "alliances_player_a_player_b_pk",
+          "columns": [
+            "player_a",
+            "player_b"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.chopped_trees": {
+      "name": "chopped_trees",
+      "schema": "",
+      "columns": {
+        "x": {
+          "name": "x",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "y": {
+          "name": "y",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chopped_at": {
+          "name": "chopped_at",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "chopped_trees_x_y_pk": {
+          "name": "chopped_trees_x_y_pk",
+          "columns": [
+            "x",
+            "y"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.enclosures": {
+      "name": "enclosures",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchor_x": {
+          "name": "anchor_x",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchor_y": {
+          "name": "anchor_y",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "enclosures_owner_id_players_id_fk": {
+          "name": "enclosures_owner_id_players_id_fk",
+          "tableFrom": "enclosures",
+          "tableTo": "players",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.fences": {
+      "name": "fences",
+      "schema": "",
+      "columns": {
+        "x": {
+          "name": "x",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "y": {
+          "name": "y",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level": {
+          "name": "level",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wood_invested": {
+          "name": "wood_invested",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "damage": {
+          "name": "damage",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "gate": {
+          "name": "gate",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {
+        "fences_owner_idx": {
+          "name": "fences_owner_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fences_owner_id_players_id_fk": {
+          "name": "fences_owner_id_players_id_fk",
+          "tableFrom": "fences",
+          "tableTo": "players",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "fences_x_y_pk": {
+          "name": "fences_x_y_pk",
+          "columns": [
+            "x",
+            "y"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.mines": {
+      "name": "mines",
+      "schema": "",
+      "columns": {
+        "x": {
+          "name": "x",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "y": {
+          "name": "y",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "controller_id": {
+          "name": "controller_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "controlled_since": {
+          "name": "controlled_since",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "mines_controller_id_players_id_fk": {
+          "name": "mines_controller_id_players_id_fk",
+          "tableFrom": "mines",
+          "tableTo": "players",
+          "columnsFrom": [
+            "controller_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "mines_x_y_pk": {
+          "name": "mines_x_y_pk",
+          "columns": [
+            "x",
+            "y"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.players": {
+      "name": "players",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "handle": {
+          "name": "handle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "handle_key": {
+          "name": "handle_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "x": {
+          "name": "x",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "y": {
+          "name": "y",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "facing": {
+          "name": "facing",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wood": {
+          "name": "wood",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gold": {
+          "name": "gold",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "players_handle_key_unique": {
+          "name": "players_handle_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "handle_key"
+          ]
+        },
+        "players_token_hash_unique": {
+          "name": "players_token_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "token_hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

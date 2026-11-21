@@ -11,6 +11,7 @@ export type StoredPlayer = {
 	readonly y: number;
 	readonly facing: Direction;
 	readonly wood: number;
+	readonly gold: number;
 	readonly createdAt: number;
 	readonly lastSeenAt: number;
 };
@@ -23,6 +24,14 @@ export type StoredFence = {
 	readonly woodInvested: number;
 	readonly damage: number;
 	readonly gate: boolean;
+};
+
+/** Only controlled mines are stored; size and position come from the seed (§6). */
+export type StoredMine = {
+	readonly x: number;
+	readonly y: number;
+	readonly controllerId: string;
+	readonly controlledSince: number;
 };
 
 /** Stored with `a < b` so each pair has one row. */
@@ -45,6 +54,7 @@ export type WorldSnapshot = {
 	readonly chops: readonly StoredChop[];
 	readonly enclosures: readonly StoredEnclosure[];
 	readonly alliances: readonly StoredAlliance[];
+	readonly mines: readonly StoredMine[];
 };
 
 export type WriteBatch = {
@@ -57,6 +67,8 @@ export type WriteBatch = {
 	readonly enclosuresRemoved: readonly string[];
 	readonly alliancesSet: readonly StoredAlliance[];
 	readonly alliancesRemoved: readonly StoredAlliance[];
+	readonly minesSet: readonly StoredMine[];
+	readonly minesRemoved: readonly { readonly x: number; readonly y: number }[];
 };
 
 export function isEmptyBatch(b: WriteBatch): boolean {
@@ -69,7 +81,9 @@ export function isEmptyBatch(b: WriteBatch): boolean {
 			b.enclosuresAdded.length +
 			b.enclosuresRemoved.length +
 			b.alliancesSet.length +
-			b.alliancesRemoved.length ===
+			b.alliancesRemoved.length +
+			b.minesSet.length +
+			b.minesRemoved.length ===
 		0
 	);
 }

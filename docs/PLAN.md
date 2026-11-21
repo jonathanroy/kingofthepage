@@ -55,9 +55,9 @@ Status: ☐ not started · ◐ in progress · ☑ done
 
 Fence upgrades (levels 1–4, upgrading repairs), chopping others' fences per level with persistent damage and 50% refund, gates by converting a fence, alliances by request and accept (ally-fence confirmation and owner notification). Migration `0001` adds fence damage, gates and the alliances table.
 
-## M6. "After that" ☐
+## M6. "After that" ☑
 
-Full nesting and controller rules, seeded gold mines with lazy `settleMineGold`, Land and Gold leaderboards (settle before read).
+Full nesting and controller rules, seeded gold mines with lazy `settleMineGold`, Land and Gold leaderboards (settle before read). Gold is fractional (settled per millisecond); only controlled mines are stored. Migration `0002` adds player gold and the mines table. Leaderboards are rate-limited per client and show the top 10.
 
 ## M7. Deployment ☐
 

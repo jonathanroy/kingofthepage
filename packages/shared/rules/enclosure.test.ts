@@ -307,3 +307,15 @@ describe("breach (§5 Breach)", () => {
 		expect(w.land.enclosuresOf("a")).toEqual([before]);
 	});
 });
+
+describe("land counts (§7)", () => {
+	it("counts controlled tiles per player, innermost only", () => {
+		const w = world(NESTED, ["a", "b"]);
+		// b's inner area is 3x2; a's area is 7x6 including b's fences, minus b's inner area.
+		expect(w.land.controlledTileCount("b")).toBe(6);
+		expect(w.land.controlledTileCount("a")).toBe(42 - 6);
+		w.breakFence(4, 2);
+		expect(w.land.controlledTileCount("b")).toBe(0);
+		expect(w.land.controlledTileCount("a")).toBe(42);
+	});
+});

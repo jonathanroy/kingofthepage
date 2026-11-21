@@ -3,6 +3,7 @@ export * from "./alliances";
 export * from "./config";
 export * from "./enclosure";
 export * from "./fences";
+export * from "./gold";
 export * from "./handles";
 export * from "./land";
 export * from "./tiles";

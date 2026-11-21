@@ -1,8 +1,9 @@
 import alea from "alea";
 import { createNoise2D, type NoiseFunction2D } from "simplex-noise";
 import { TERRAIN } from "../rules/config";
-import { CHUNK_SIZE, chunkOrigin, localIndex } from "./coords";
+import { CHUNK_SIZE, chunkKey, chunkOrigin, localIndex, tileToChunk } from "./coords";
 import { tileRandom } from "./hash";
+import { type Mine, type MineSize, mineInChunk } from "./mines";
 
 /** Base terrain only. Chopped trees, fences and ownership are diffs on top. */
 export type Terrain = "grass" | "tree" | "water" | "hill";
@@ -12,7 +13,12 @@ export const TERRAIN_CODES: readonly Terrain[] = ["grass", "tree", "water", "hil
 export type TerrainGenerator = {
 	readonly seed: string;
 	terrainAt(x: number, y: number): Terrain;
+	/** The gold mine on this tile, if any (§6). */
+	mineAt(x: number, y: number): MineSize | null;
 };
+
+/** Mines per chunk are cheap to compute but looked up per tile, so a small cache helps. */
+const MINE_CACHE_LIMIT = 4096;
 
 export function createTerrainGenerator(seed: string): TerrainGenerator {
 	const elevation: NoiseFunction2D = createNoise2D(alea(`${seed}:elevation`));
@@ -29,7 +35,21 @@ export function createTerrainGenerator(seed: string): TerrainGenerator {
 		return tileRandom(seed, "tree", x, y) < treeChance ? "tree" : "grass";
 	}
 
-	return { seed, terrainAt };
+	const mineCache = new Map<string, Mine | null>();
+	function mineAt(x: number, y: number): MineSize | null {
+		const cx = tileToChunk(x);
+		const cy = tileToChunk(y);
+		const key = chunkKey(cx, cy);
+		let mine = mineCache.get(key);
+		if (mine === undefined) {
+			if (mineCache.size >= MINE_CACHE_LIMIT) mineCache.clear();
+			mine = mineInChunk(seed, cx, cy, terrainAt);
+			mineCache.set(key, mine);
+		}
+		return mine && mine.x === x && mine.y === y ? mine.size : null;
+	}
+
+	return { seed, terrainAt, mineAt };
 }
 
 /** Row-major terrain codes (indices into TERRAIN_CODES) for one 32×32 chunk. */

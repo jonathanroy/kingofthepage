@@ -60,6 +60,8 @@ function frameFor(tile: Tile): number {
 			return TILE_FRAME.water;
 		case "hill":
 			return TILE_FRAME.hill;
+		case "mine":
+			return tile.size === "large" ? TILE_FRAME.mineLarge : TILE_FRAME.mineSmall;
 		case "stump":
 		case "fence":
 			// Fences are drawn as images on top of the ground they stand on.

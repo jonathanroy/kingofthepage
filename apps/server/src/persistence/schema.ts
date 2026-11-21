@@ -1,6 +1,7 @@
 import {
 	bigint,
 	boolean,
+	doublePrecision,
 	index,
 	integer,
 	pgTable,
@@ -23,6 +24,8 @@ export const players = pgTable("players", {
 	y: integer("y").notNull(),
 	facing: text("facing").notNull(),
 	wood: integer("wood").notNull(),
+	/** Fractional: gold is settled per millisecond of mine control (§6). */
+	gold: doublePrecision("gold").notNull().default(0),
 	createdAt: ms("created_at").notNull(),
 	lastSeenAt: ms("last_seen_at").notNull(),
 });
@@ -75,4 +78,18 @@ export const alliances = pgTable(
 			.references(() => players.id),
 	},
 	(t) => [primaryKey({ columns: [t.playerA, t.playerB] })],
+);
+
+/** Controlled mines only; position and size come from the seed (§6). */
+export const mines = pgTable(
+	"mines",
+	{
+		x: integer("x").notNull(),
+		y: integer("y").notNull(),
+		controllerId: uuid("controller_id")
+			.notNull()
+			.references(() => players.id),
+		controlledSince: ms("controlled_since").notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.x, t.y] })],
 );

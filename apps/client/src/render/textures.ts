@@ -4,7 +4,15 @@ import { PALETTE } from "./palette";
 export const TILE = 16;
 
 /** Frame index of each tile kind in the "tiles" sheet. */
-export const TILE_FRAME = { grass: 0, tree: 1, water: 2, hill: 3, stump: 4 } as const;
+export const TILE_FRAME = {
+	grass: 0,
+	tree: 1,
+	water: 2,
+	hill: 3,
+	stump: 4,
+	mineSmall: 5,
+	mineLarge: 6,
+} as const;
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -49,6 +57,30 @@ function hill(ctx: Ctx, ox: number): void {
 	for (let i = 0; i < 4; i++) {
 		px(ctx, PALETTE.hill[1], ox + 2 + i * 3, 12 - i * 3, 4, 1);
 		px(ctx, PALETTE.hill[2], ox + 3 + i * 3, 11 - i * 3, 2, 1);
+	}
+}
+
+/** A rocky mound with gold; large mines get more and bigger nuggets so they stand out. */
+function mine(ctx: Ctx, ox: number, large: boolean): void {
+	grass(ctx, ox);
+	px(ctx, "#5a5a5a", ox + 2, 6, 12, 9);
+	px(ctx, "#7a7a7a", ox + 3, 4, 10, 4);
+	px(ctx, "#3a3a3a", ox + 6, 10, 4, 5);
+	const nuggets = large
+		? [
+				[3, 6, 2],
+				[10, 5, 3],
+				[5, 11, 2],
+				[11, 10, 2],
+				[7, 4, 2],
+			]
+		: [
+				[4, 7, 2],
+				[10, 8, 2],
+			];
+	for (const [x, y, n] of nuggets as [number, number, number][]) {
+		px(ctx, "#ffd60a", ox + x, y, n, n);
+		px(ctx, "#fff3a0", ox + x, y, 1, 1);
 	}
 }
 
@@ -157,12 +189,14 @@ function canvasTexture(
 }
 
 export function createTextures(scene: Phaser.Scene): void {
-	canvasTexture(scene, "tiles", TILE * 5, TILE, (ctx) => {
+	canvasTexture(scene, "tiles", TILE * 7, TILE, (ctx) => {
 		grass(ctx, TILE * TILE_FRAME.grass);
 		tree(ctx, TILE * TILE_FRAME.tree);
 		water(ctx, TILE * TILE_FRAME.water);
 		hill(ctx, TILE * TILE_FRAME.hill);
 		stump(ctx, TILE * TILE_FRAME.stump);
+		mine(ctx, TILE * TILE_FRAME.mineSmall, false);
+		mine(ctx, TILE * TILE_FRAME.mineLarge, true);
 	});
 	FENCE_DRAWERS.forEach((draw, i) => {
 		canvasTexture(scene, `fence-${i + 1}`, TILE, TILE, draw);

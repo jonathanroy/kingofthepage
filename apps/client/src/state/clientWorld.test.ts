@@ -44,6 +44,8 @@ function setup(serverTime = 5_000) {
 		you: { id: "me", handle: "Me", x: spot.x, y: spot.y, facing: "down" },
 		token: "t",
 		wood: 0,
+		gold: 0,
+		goldPerMinute: 0,
 		serverTime,
 	});
 	for (let cy = -2; cy <= 2; cy++) for (let cx = -2; cx <= 2; cx++) world.apply(emptyChunk(cx, cy));
@@ -85,6 +87,19 @@ describe("ClientWorld", () => {
 		// A late ack for the dropped guess is still authoritative.
 		world.apply({ type: "moved", seq: 2, x: spot.x + 1, y: spot.y, facing: "right" });
 		expect(world.me?.x).toBe(spot.x + 1);
+	});
+
+	it("counts gold up between server updates (§6)", () => {
+		const { world, tick } = setup();
+		world.apply({
+			type: "inventory",
+			wood: 0,
+			gold: 10,
+			goldPerMinute: 3,
+			asOf: world.serverNow(),
+		});
+		tick(2 * 60_000);
+		expect(world.liveGold()).toBeCloseTo(16);
 	});
 
 	it("predicts a turn without moving", () => {

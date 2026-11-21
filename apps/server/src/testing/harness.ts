@@ -1,11 +1,18 @@
 import type { ClientMessage, ServerMessage } from "@kotp/shared/protocol";
-import type { Direction, Terrain, TerrainGenerator } from "@kotp/shared/world";
+import type { Direction, MineSize, Terrain, TerrainGenerator } from "@kotp/shared/world";
 import { Game } from "../game/game";
 import { World } from "../game/world";
 
-/** Flat grass everywhere except the listed tiles. */
-export function terrainFrom(features: Record<string, Terrain> = {}): TerrainGenerator {
-	return { seed: "test", terrainAt: (x, y) => features[`${x},${y}`] ?? "grass" };
+/** Flat grass everywhere except the listed tiles and mines. */
+export function terrainFrom(
+	features: Record<string, Terrain> = {},
+	mines: Record<string, MineSize> = {},
+): TerrainGenerator {
+	return {
+		seed: "test",
+		terrainAt: (x, y) => features[`${x},${y}`] ?? "grass",
+		mineAt: (x, y) => mines[`${x},${y}`] ?? null,
+	};
 }
 
 /** Small deterministic PRNG (mulberry32) so test runs are repeatable. */
@@ -32,7 +39,10 @@ export type TestClient = {
 	join(handle: string): string;
 };
 
-export function createHarness(features: Record<string, Terrain> = {}) {
+export function createHarness(
+	features: Record<string, Terrain> = {},
+	mines: Record<string, MineSize> = {},
+) {
 	let time = 1_000_000;
 	let ids = 0;
 	const random = seededRandom(42);
@@ -40,7 +50,7 @@ export function createHarness(features: Record<string, Terrain> = {}) {
 		seed: "test",
 		random,
 		newId: () => `id${++ids}`,
-		terrain: terrainFrom(features),
+		terrain: terrainFrom(features, mines),
 	});
 	const game = new Game({
 		world,
@@ -88,6 +98,10 @@ export function createHarness(features: Record<string, Terrain> = {}) {
 		now: () => time,
 		relocate(id: string, x: number, y: number, facing: Direction): void {
 			game.relocatePlayer(id, x, y, facing);
+		},
+		/** Advances the clock without ticking. */
+		skip(ms: number): void {
+			time += ms;
 		},
 		/** Advances the clock and runs one tick. */
 		advance(ms: number): void {

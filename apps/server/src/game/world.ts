@@ -25,11 +25,13 @@ import {
 	isWalkableFor,
 	LandRegistry,
 	makeGate,
+	mineGoldPerMinute,
 	needsAllyConfirmation,
 	normalizeHandle,
 	PACE,
 	recomputeOwnerEnclosures,
 	resolveTile,
+	settleMineGold,
 	type Tile,
 	type TileDiff,
 	type TileView,
@@ -44,6 +46,7 @@ import {
 	createTerrainGenerator,
 	type Direction,
 	localIndex,
+	type MineSize,
 	stepToward,
 	type TerrainGenerator,
 	type TileCoord,
@@ -67,6 +70,8 @@ export type PlayerState = {
 	facing: Direction;
 	wood: number;
 	lastSeenAt: number;
+	/** Total gold earned (§6), settled lazily from the mines this player controls. */
+	gold: number;
 	online: boolean;
 	nextMoveAt: number;
 	nextActionAt: number;
@@ -97,6 +102,14 @@ export type ActionResult =
 
 type TileDiffAt = TileDiff & { readonly x: number; readonly y: number };
 
+type MineState = {
+	readonly x: number;
+	readonly y: number;
+	readonly size: MineSize;
+	readonly controllerId: string;
+	controlledSince: number;
+};
+
 export type WorldDeps = {
 	readonly seed: string;
 	/** Randomness for wood rolls; injected so tests are deterministic. */
@@ -116,6 +129,8 @@ export class World {
 	readonly alliances = new AllianceBook();
 	/** Ally chopper + fence pairs already reported to the owner, so they hear it once per fence. */
 	private readonly allyChopsReported = new Set<string>();
+	private readonly mines = new Map<string, MineState>();
+	private readonly dirtyMines = new Set<string>();
 	private readonly dirtyAlliances = new Map<string, { a: string; b: string; formed: boolean }>();
 	private readonly players = new Map<string, PlayerState>();
 	private readonly handleIndex = new Map<string, string>();
@@ -169,7 +184,20 @@ export class World {
 				this.enclosuresRemoved.add(e.id);
 			}
 		}
-		this.land.apply({ removed: [], added });
+		const changes = this.land.apply({ removed: [], added });
+		// Restore each mine's clock; if stored control disagrees with the land (a lost write),
+		// trust the land and restart the clock now.
+		const stored = new Map(snapshot.mines.map((m) => [tileKey(m.x, m.y), m]));
+		for (const c of changes) {
+			const { x, y } = parseKey(c.tile);
+			const size = this.terrain.mineAt(x, y);
+			if (!size || !c.to) continue;
+			const saved = stored.get(c.tile);
+			const since = saved && saved.controllerId === c.to ? saved.controlledSince : now;
+			this.mines.set(c.tile, { x, y, size, controllerId: c.to, controlledSince: since });
+			if (since === now) this.dirtyMines.add(c.tile);
+		}
+		for (const key of stored.keys()) if (!this.mines.has(key)) this.dirtyMines.add(key);
 	}
 
 	takeWriteBatch(): WriteBatch {
@@ -196,6 +224,16 @@ export class World {
 			chopsRemoved,
 			enclosuresAdded: [...this.enclosuresAdded.values()],
 			enclosuresRemoved: [...this.enclosuresRemoved],
+			minesSet: [...this.dirtyMines]
+				.map((k) => this.mines.get(k))
+				.filter((m): m is MineState => m !== undefined)
+				.map((m) => ({
+					x: m.x,
+					y: m.y,
+					controllerId: m.controllerId,
+					controlledSince: m.controlledSince,
+				})),
+			minesRemoved: [...this.dirtyMines].filter((k) => !this.mines.has(k)).map(parseKey),
 			alliancesSet: [...this.dirtyAlliances.values()]
 				.filter((d) => d.formed)
 				.map((d) => ({ a: d.a, b: d.b })),
@@ -204,6 +242,7 @@ export class World {
 				.map((d) => ({ a: d.a, b: d.b })),
 		};
 		this.dirtyAlliances.clear();
+		this.dirtyMines.clear();
 		this.dirtyPlayers.clear();
 		this.dirtyTiles.clear();
 		this.enclosuresAdded.clear();
@@ -224,6 +263,7 @@ export class World {
 			this.getDiff(x, y),
 			now,
 			(this.occupancy.get(key) ?? 0) > 0,
+			this.terrain.mineAt(x, y),
 		);
 	}
 
@@ -275,6 +315,7 @@ export class World {
 			y: input.at.y,
 			facing: "down",
 			wood: 0,
+			gold: 0,
 			lastSeenAt: input.now,
 			online: false,
 			nextMoveAt: 0,
@@ -558,7 +599,81 @@ export class World {
 		}
 		for (const e of changes.added) this.enclosuresAdded.set(e.id, toStoredEnclosure(e));
 		const controllerChanges = this.land.apply(changes);
-		return controllerChanges.length > 0 ? [{ kind: "control", changes: controllerChanges }] : [];
+		if (controllerChanges.length === 0) return [];
+		return [
+			{ kind: "control", changes: controllerChanges },
+			...this.updateMineControl(controllerChanges, now),
+		];
+	}
+
+	// ---------- Gold mines (§6) ----------
+
+	/**
+	 * §8: when a mine's controller changes, pay out the old controller first, then start
+	 * the new one's clock. Returns inventory events for everyone whose income changed.
+	 */
+	private updateMineControl(changes: readonly ControllerChange[], now: number): WorldEvent[] {
+		const affected = new Set<string>();
+		for (const c of changes) {
+			const { x, y } = parseKey(c.tile);
+			const size = this.terrain.mineAt(x, y);
+			if (!size) continue;
+			const current = this.mines.get(c.tile);
+			if (current) {
+				this.creditMine(current, now);
+				affected.add(current.controllerId);
+			}
+			if (c.to) {
+				this.mines.set(c.tile, { x, y, size, controllerId: c.to, controlledSince: now });
+				affected.add(c.to);
+			} else {
+				this.mines.delete(c.tile);
+			}
+			this.dirtyMines.add(c.tile);
+		}
+		return [...affected].map((id) => ({ kind: "inventory", id }));
+	}
+
+	private creditMine(mine: MineState, now: number): void {
+		const result = settleMineGold(mine.size, mine, now);
+		mine.controlledSince = result.control.controlledSince;
+		const p = this.players.get(mine.controllerId);
+		if (p) {
+			p.gold += result.earned;
+			this.dirtyPlayers.add(p.id);
+		}
+		this.dirtyMines.add(tileKey(mine.x, mine.y));
+	}
+
+	/** Brings a player's gold up to date; done before their balance is shown. */
+	settlePlayerGold(playerId: string, now: number): void {
+		for (const mine of this.mines.values()) {
+			if (mine.controllerId === playerId) this.creditMine(mine, now);
+		}
+	}
+
+	goldPerMinute(playerId: string): number {
+		let rate = 0;
+		for (const mine of this.mines.values()) {
+			if (mine.controllerId === playerId) rate += mineGoldPerMinute(mine.size);
+		}
+		return rate;
+	}
+
+	/** §7: both leaderboards, with every mine settled first so gold is current. */
+	leaderboards(now: number, size: number) {
+		for (const mine of this.mines.values()) this.creditMine(mine, now);
+		const ref = (id: string) => ({ id, handle: this.handleOf(id) ?? "?" });
+		const land = [...this.land.controlledTileCounts()]
+			.map(([id, value]) => ({ ...ref(id), value }))
+			.sort((a, b) => b.value - a.value || a.handle.localeCompare(b.handle))
+			.slice(0, size);
+		const gold = [...this.players.values()]
+			.filter((p) => p.gold > 0)
+			.map((p) => ({ ...ref(p.id), value: Math.floor(p.gold) }))
+			.sort((a, b) => b.value - a.value || a.handle.localeCompare(b.handle))
+			.slice(0, size);
+		return { land, gold };
 	}
 
 	private clearAllyChopReports(at: TileCoord): void {
@@ -657,6 +772,7 @@ function toStoredPlayer(p: PlayerState): StoredPlayer {
 		y: p.y,
 		facing: p.facing,
 		wood: p.wood,
+		gold: p.gold,
 		createdAt: p.createdAt,
 		lastSeenAt: p.lastSeenAt,
 	};

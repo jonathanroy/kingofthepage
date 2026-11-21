@@ -46,8 +46,9 @@ const connection = new Connection({
 			case "joined":
 				tokenStorage.set(msg.token);
 				hud.hideJoin();
-				hud.update({ ...msg.you, wood: msg.wood });
+				if (world.me) hud.update(world.me);
 				startGame();
+				startTimers();
 				break;
 			case "joinRejected":
 				if (msg.reason === "badToken") tokenStorage.clear();
@@ -62,6 +63,9 @@ const connection = new Connection({
 			case "alliances":
 				hud.renderAlliances(world.alliances);
 				break;
+			case "leaderboard":
+				hud.renderLeaderboard(msg, world.me?.id);
+				break;
 			default:
 				break;
 		}
@@ -70,6 +74,19 @@ const connection = new Connection({
 		hud.toast(`Disconnected: ${reason}. Reload the page to play again.`, true);
 	},
 });
+
+const LEADERBOARD_REFRESH_MS = 10_000;
+let timersStarted = false;
+
+function startTimers(): void {
+	if (timersStarted) return;
+	timersStarted = true;
+	// The gold counter ticks locally between server updates.
+	window.setInterval(() => hud.updateGold(world.liveGold()), 500);
+	const refresh = () => connection.send({ type: "leaderboard" });
+	refresh();
+	window.setInterval(refresh, LEADERBOARD_REFRESH_MS);
+}
 
 hud.onJoin((handle) => connection.send({ type: "join", handle }));
 hud.onAlliance({

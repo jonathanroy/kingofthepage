@@ -83,3 +83,21 @@ export const NETWORK = {
 	maxQueuedIntents: 8,
 	persistIntervalMs: 2000,
 } as const;
+
+/** §6 Gold mines. */
+export const MINES = {
+	/** Chance that a chunk holds a mine: about 1 per 40 chunks. */
+	chunkChance: 1 / 40,
+	/** Share of mines that are large; large mines are rarer and richer. */
+	largeShare: 0.25,
+	goldPerMinute: { small: 1, large: 3 },
+	/** Tries to find a non-water, non-hill tile in the chunk before giving up on its mine. */
+	placementAttempts: 8,
+} as const;
+
+/** §7 Leaderboards. */
+export const LEADERBOARD = {
+	size: 10,
+	/** Minimum time between leaderboard requests from one client. */
+	minRequestIntervalMs: 2000,
+} as const;

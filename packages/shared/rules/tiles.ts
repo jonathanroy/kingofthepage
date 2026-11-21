@@ -1,3 +1,4 @@
+import type { MineSize } from "../world/mines";
 import type { Terrain } from "../world/terrain";
 import { TREE } from "./config";
 import type { AllyCheck, Fence, PlayerId } from "./types";
@@ -15,6 +16,8 @@ export type Tile =
 	| { readonly kind: "tree" }
 	| { readonly kind: "water" }
 	| { readonly kind: "hill" }
+	/** §6: solid, can't hold a fence, doesn't block enclosure. */
+	| { readonly kind: "mine"; readonly size: MineSize }
 	| { readonly kind: "fence"; readonly fence: Fence };
 
 /** §8 Lazy updates: a chopped tree exists again once the regrow delay has passed. */
@@ -31,7 +34,9 @@ export function resolveTile(
 	diff: TileDiff | undefined,
 	now: number,
 	occupied = false,
+	mine: MineSize | null = null,
 ): Tile {
+	if (mine) return { kind: "mine", size: mine };
 	// A fence on a stump wins: a tree can't grow through a fence.
 	if (diff?.fence) return { kind: "fence", fence: diff.fence };
 	if (terrain === "tree") {

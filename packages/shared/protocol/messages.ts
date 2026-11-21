@@ -30,6 +30,8 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("allyAccept"), playerId: z.string().max(64) }),
 	z.object({ type: z.literal("allyDecline"), playerId: z.string().max(64) }),
 	z.object({ type: z.literal("allyEnd"), playerId: z.string().max(64) }),
+	/** §7: ask for both leaderboards. */
+	z.object({ type: z.literal("leaderboard") }),
 ]);
 
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
@@ -56,6 +58,8 @@ export type FenceInfo = {
 };
 
 export type PlayerRef = { readonly id: string; readonly handle: string };
+
+export type LeaderboardEntry = PlayerRef & { readonly value: number };
 
 export type Notice =
 	| {
@@ -112,6 +116,8 @@ export type ServerMessage =
 			/** Keep this to resume as the same player later. */
 			readonly token: string;
 			readonly wood: number;
+			readonly gold: number;
+			readonly goldPerMinute: number;
 			readonly serverTime: number;
 	  }
 	| { readonly type: "joinRejected"; readonly reason: JoinRejectReason; readonly detail?: string }
@@ -148,7 +154,24 @@ export type ServerMessage =
 			readonly y: number;
 			readonly facing: Facing;
 	  }
-	| { readonly type: "inventory"; readonly wood: number }
+	/**
+	 * Gold is settled at `asOf` (server time). Clients extrapolate with `goldPerMinute`
+	 * to show a live counter between updates.
+	 */
+	| {
+			readonly type: "inventory";
+			readonly wood: number;
+			readonly gold: number;
+			readonly goldPerMinute: number;
+			readonly asOf: number;
+	  }
+	| {
+			readonly type: "leaderboard";
+			readonly land: readonly LeaderboardEntry[];
+			readonly gold: readonly LeaderboardEntry[];
+			/** The requesting player's own values, even when outside the top list. */
+			readonly you: { readonly land: number; readonly gold: number };
+	  }
 	/** Full alliance state for the receiving player, sent on join and on every change. */
 	| {
 			readonly type: "alliances";

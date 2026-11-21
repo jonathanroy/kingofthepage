@@ -26,12 +26,13 @@ export class PgStore implements WorldStore {
 	}
 
 	async load(): Promise<WorldSnapshot> {
-		const [players, fences, chops, enclosures, alliances] = await Promise.all([
+		const [players, fences, chops, enclosures, alliances, mines] = await Promise.all([
 			this.db.select().from(schema.players),
 			this.db.select().from(schema.fences),
 			this.db.select().from(schema.choppedTrees),
 			this.db.select().from(schema.enclosures),
 			this.db.select().from(schema.alliances),
+			this.db.select().from(schema.mines),
 		]);
 		return {
 			players: players.map((p) => ({ ...p, facing: toDirection(p.facing) })),
@@ -39,6 +40,7 @@ export class PgStore implements WorldStore {
 			chops,
 			enclosures,
 			alliances: alliances.map((a) => ({ a: a.playerA, b: a.playerB })),
+			mines,
 		};
 	}
 
@@ -108,6 +110,21 @@ export class PgStore implements WorldStore {
 					.insert(schema.alliances)
 					.values(batch.alliancesSet.map((a) => ({ playerA: a.a, playerB: a.b })))
 					.onConflictDoNothing();
+			}
+			for (const m of batch.minesRemoved) {
+				await tx.delete(schema.mines).where(and(eq(schema.mines.x, m.x), eq(schema.mines.y, m.y)));
+			}
+			if (batch.minesSet.length > 0) {
+				await tx
+					.insert(schema.mines)
+					.values([...batch.minesSet])
+					.onConflictDoUpdate({
+						target: [schema.mines.x, schema.mines.y],
+						set: {
+							controllerId: sql`excluded.controller_id`,
+							controlledSince: sql`excluded.controlled_since`,
+						},
+					});
 			}
 		});
 	}

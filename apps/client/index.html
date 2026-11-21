@@ -145,6 +145,56 @@
 			.muted {
 				opacity: 0.7;
 			}
+			#board {
+				position: fixed;
+				right: 12px;
+				bottom: 12px;
+				width: 260px;
+				padding: 8px 10px;
+				font-size: 12px;
+				z-index: 5;
+			}
+			#board summary {
+				cursor: pointer;
+				color: var(--gold);
+				font-size: 13px;
+			}
+			#board .cols {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 8px;
+			}
+			#board h2 {
+				margin: 6px 0 2px;
+				font-size: 12px;
+			}
+			#board ol {
+				list-style: none;
+				margin: 0;
+				padding: 0;
+			}
+			#board li {
+				display: flex;
+				justify-content: space-between;
+				gap: 4px;
+			}
+			#board li span {
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+			#board li.me {
+				color: var(--gold);
+			}
+			#board p {
+				margin: 6px 0 0;
+				opacity: 0.8;
+			}
+			@media (max-width: 640px) {
+				#board {
+					display: none;
+				}
+			}
 			#confirm {
 				position: fixed;
 				inset: 0;
@@ -196,7 +246,7 @@
 			</div>
 		</div>
 		<div id="hud" class="panel" hidden>
-			<div><span id="hud-handle"></span> · Wood <b id="hud-wood">0</b> · <span id="hud-pos"></span></div>
+			<div><span id="hud-handle"></span> · Wood <b id="hud-wood">0</b> · Gold <b id="hud-gold">0</b><span id="hud-rate"></span> · <span id="hud-pos"></span></div>
 			<div class="help" id="help"></div>
 		</div>
 		<div id="allies" class="panel" hidden>
@@ -206,6 +256,14 @@
 			</form>
 			<ul id="ally-list"></ul>
 		</div>
+		<details id="board" class="panel" open hidden>
+			<summary>Leaderboards</summary>
+			<div class="cols">
+				<div><h2>Land</h2><ol id="board-land"></ol></div>
+				<div><h2>Gold</h2><ol id="board-gold"></ol></div>
+			</div>
+			<p id="board-you"></p>
+		</details>
 		<div id="confirm" hidden>
 			<div class="panel">
 				<p id="confirm-text"></p>

@@ -1,5 +1,5 @@
 import { type ClientMessage, PROTOCOL_VERSION, type ServerMessage } from "@kotp/shared/protocol";
-import { checkHandle, NETWORK } from "@kotp/shared/rules";
+import { checkHandle, LEADERBOARD, NETWORK } from "@kotp/shared/rules";
 import { type ChunkCoord, chunkKey, chunkOfTile, type Direction } from "@kotp/shared/world";
 import { suggestHandle } from "./names";
 import { findSpawnTile } from "./spawn";
@@ -27,6 +27,7 @@ type Session = {
 	playerId: string | null;
 	queue: Intent[];
 	knownChunks: Set<string>;
+	lastLeaderboardAt: number;
 };
 
 /**
@@ -41,7 +42,15 @@ export class Game {
 
 	connect(send: (msg: ServerMessage) => void, close: () => void): string {
 		const id = this.deps.newId();
-		this.sessions.set(id, { id, send, close, playerId: null, queue: [], knownChunks: new Set() });
+		this.sessions.set(id, {
+			id,
+			send,
+			close,
+			playerId: null,
+			queue: [],
+			knownChunks: new Set(),
+			lastLeaderboardAt: Number.NEGATIVE_INFINITY,
+		});
 		send({
 			type: "hello",
 			protocolVersion: PROTOCOL_VERSION,
@@ -81,6 +90,9 @@ export class Game {
 			case "allyDecline":
 			case "allyEnd":
 				if (session.playerId) this.handleAlliance(session.playerId, msg);
+				break;
+			case "leaderboard":
+				this.sendLeaderboard(session);
 				break;
 			default:
 				this.enqueue(session, msg);
@@ -178,8 +190,12 @@ export class Game {
 			you: this.deps.world.playerInfo(player),
 			token,
 			wood: player.wood,
+			gold: 0,
+			goldPerMinute: 0,
 			serverTime: now,
 		});
+		// Offline earnings (§6) are settled and shown as soon as the player is back.
+		this.sendInventory(player.id);
 		this.refreshInterest(session, player);
 		this.sendAlliances(player.id);
 		this.sendNear(
@@ -188,6 +204,42 @@ export class Game {
 			{ type: "player", player: this.deps.world.playerInfo(player) },
 			player.id,
 		);
+	}
+
+	// ---------- Gold and leaderboards (§6, §7) ----------
+
+	/** Settles the player's mines first: reading a balance is a settlement point (§8). */
+	private sendInventory(playerId: string): void {
+		const { world } = this.deps;
+		const p = world.playerById(playerId);
+		const s = this.sessionOf(playerId);
+		if (!p || !s) return;
+		const now = this.deps.now();
+		world.settlePlayerGold(playerId, now);
+		s.send({
+			type: "inventory",
+			wood: p.wood,
+			gold: p.gold,
+			goldPerMinute: world.goldPerMinute(playerId),
+			asOf: now,
+		});
+	}
+
+	private sendLeaderboard(session: Session): void {
+		if (!session.playerId) return;
+		const now = this.deps.now();
+		if (now - session.lastLeaderboardAt < LEADERBOARD.minRequestIntervalMs) return;
+		session.lastLeaderboardAt = now;
+		const { world } = this.deps;
+		const boards = world.leaderboards(now, LEADERBOARD.size);
+		session.send({
+			type: "leaderboard",
+			...boards,
+			you: {
+				land: world.land.controlledTileCount(session.playerId),
+				gold: Math.floor(world.playerById(session.playerId)?.gold ?? 0),
+			},
+		});
 	}
 
 	// ---------- Alliances (§4) ----------
@@ -349,12 +401,9 @@ export class Game {
 						...world.tileSnapshot(e.x, e.y),
 					});
 					break;
-				case "inventory": {
-					const p = world.playerById(e.id);
-					const s = this.sessionOf(e.id);
-					if (p && s) s.send({ type: "inventory", wood: p.wood });
+				case "inventory":
+					this.sendInventory(e.id);
 					break;
-				}
 				case "player": {
 					const p = world.playerById(e.id);
 					if (!p) break;

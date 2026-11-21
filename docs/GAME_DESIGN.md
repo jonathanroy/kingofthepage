@@ -206,3 +206,4 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
   - Trees block movement (like Pokémon), so players walk only on grass and on stumps of chopped trees.
   - Fences can be built on stumps, and a tree can't regrow through a fence. When the fence is removed, the tree reappears if its regrow delay has passed.
   - A fence can't be built on a tile where a player is standing.
+- **Repairing max-level fences:** upgrading is the only repair and damage never heals, so a level-4 fence can only get weaker over time. Allow a paid repair at max level, or let damage heal slowly?

@@ -22,6 +22,7 @@ describe.skipIf(!url)("PgStore", () => {
 			y: 7,
 			facing: "left" as const,
 			wood: 3,
+			gold: 1.5,
 			createdAt: 1000,
 			lastSeenAt: 2000,
 		};
@@ -37,6 +38,8 @@ describe.skipIf(!url)("PgStore", () => {
 			enclosuresRemoved: [],
 			alliancesSet: [],
 			alliancesRemoved: [],
+			minesSet: [],
+			minesRemoved: [],
 		});
 		// Updating and removing in a second batch.
 		await store.write({
@@ -49,6 +52,8 @@ describe.skipIf(!url)("PgStore", () => {
 			enclosuresRemoved: [enclosureId],
 			alliancesSet: [],
 			alliancesRemoved: [],
+			minesSet: [],
+			minesRemoved: [],
 		});
 		const snap = await store.load();
 		expect(snap.players.find((p) => p.id === id)).toMatchObject({ wood: 9, facing: "left", x: -5 });

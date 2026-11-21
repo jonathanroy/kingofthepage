@@ -1,6 +1,7 @@
 import type {
 	ActionRejectReason,
 	JoinRejectReason,
+	LeaderboardEntry,
 	Notice,
 	PlayerRef,
 } from "@kotp/shared/protocol";
@@ -129,6 +130,7 @@ export class Hud {
 		this.join.hidden = true;
 		this.hud.hidden = false;
 		this.allyPanel.hidden = false;
+		el("board").hidden = false;
 		this.input.blur();
 	}
 
@@ -136,6 +138,34 @@ export class Hud {
 		el("hud-handle").textContent = me.handle;
 		el("hud-wood").textContent = String(me.wood);
 		el("hud-pos").textContent = `${me.x}, ${me.y}`;
+		el("hud-rate").textContent = me.goldPerMinute > 0 ? ` (+${me.goldPerMinute}/min)` : "";
+	}
+
+	updateGold(gold: number): void {
+		el("hud-gold").textContent = String(Math.floor(gold));
+	}
+
+	renderLeaderboard(
+		board: {
+			land: readonly LeaderboardEntry[];
+			gold: readonly LeaderboardEntry[];
+			you: { land: number; gold: number };
+		},
+		myId: string | undefined,
+	): void {
+		const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+		const list = (entries: readonly LeaderboardEntry[]) =>
+			entries.length === 0
+				? `<li class="muted">Nobody yet</li>`
+				: entries
+						.map(
+							(e, i) =>
+								`<li${e.id === myId ? ' class="me"' : ""}><span>${i + 1}. ${esc(e.handle)}</span><b>${e.value}</b></li>`,
+						)
+						.join("");
+		el("board-land").innerHTML = list(board.land);
+		el("board-gold").innerHTML = list(board.gold);
+		el("board-you").textContent = `You: ${board.you.land} tiles · ${board.you.gold} gold`;
 	}
 
 	renderAlliances(state: {

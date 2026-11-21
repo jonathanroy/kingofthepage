@@ -32,6 +32,8 @@ export type ControllerChange = {
 export class LandRegistry {
 	private readonly byId = new Map<string, Enclosure>();
 	private readonly byTile = new Map<string, Set<string>>();
+	/** §7 Land leaderboard: tiles each player currently controls. */
+	private readonly controlledCounts = new Map<PlayerId, number>();
 
 	enclosuresOf(ownerId: PlayerId): Enclosure[] {
 		return [...this.byId.values()].filter((e) => e.ownerId === ownerId);
@@ -65,9 +67,28 @@ export class LandRegistry {
 		for (const k of touched) {
 			const from = before.get(k) ?? null;
 			const to = pickController(this.enclosuresAtKey(k));
-			if (from !== to) result.push({ tile: k, from, to });
+			if (from !== to) {
+				result.push({ tile: k, from, to });
+				if (from) this.bumpCount(from, -1);
+				if (to) this.bumpCount(to, 1);
+			}
 		}
 		return result;
+	}
+
+	controlledTileCount(ownerId: PlayerId): number {
+		return this.controlledCounts.get(ownerId) ?? 0;
+	}
+
+	/** Every player with at least one controlled tile, with their count. */
+	controlledTileCounts(): Map<PlayerId, number> {
+		return new Map(this.controlledCounts);
+	}
+
+	private bumpCount(ownerId: PlayerId, delta: number): void {
+		const n = (this.controlledCounts.get(ownerId) ?? 0) + delta;
+		if (n > 0) this.controlledCounts.set(ownerId, n);
+		else this.controlledCounts.delete(ownerId);
 	}
 
 	private enclosuresAtKey(key: string): Enclosure[] {

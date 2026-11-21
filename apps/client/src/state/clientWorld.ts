@@ -36,6 +36,10 @@ export type Me = {
 	y: number;
 	facing: Direction;
 	wood: number;
+	/** Settled gold at `goldAsOf` (server time); extrapolate with `goldPerMinute`. */
+	gold: number;
+	goldPerMinute: number;
+	goldAsOf: number;
 };
 
 type PendingMove = { readonly seq: number; readonly x: number; readonly y: number };
@@ -106,7 +110,13 @@ export class ClientWorld {
 				break;
 			case "joined":
 				this.syncClock(msg.serverTime);
-				this.me = { ...msg.you, wood: msg.wood };
+				this.me = {
+					...msg.you,
+					wood: msg.wood,
+					gold: msg.gold,
+					goldPerMinute: msg.goldPerMinute,
+					goldAsOf: msg.serverTime,
+				};
 				this.handles.set(msg.you.id, msg.you.handle);
 				this.pending = [];
 				this.changes.meChanged = true;
@@ -141,6 +151,9 @@ export class ClientWorld {
 			case "inventory":
 				if (this.me) {
 					this.me.wood = msg.wood;
+					this.me.gold = msg.gold;
+					this.me.goldPerMinute = msg.goldPerMinute;
+					this.me.goldAsOf = msg.asOf;
 					this.changes.meChanged = true;
 				}
 				break;
@@ -157,6 +170,7 @@ export class ClientWorld {
 			case "joinRejected":
 			case "rejected":
 			case "notice":
+			case "leaderboard":
 				break;
 		}
 	}
@@ -181,6 +195,7 @@ export class ClientWorld {
 			this.diffAt(x, y),
 			this.serverNow(),
 			this.isOccupied(x, y),
+			this.terrain.mineAt(x, y),
 		);
 	}
 
@@ -196,6 +211,14 @@ export class ClientWorld {
 				if (diff.choppedAt !== undefined && !diff.fence) this.changes.tiles.add(key);
 			}
 		}
+	}
+
+	/** Gold shown right now: the last settled value plus what the mines produced since (§6). */
+	liveGold(): number {
+		const me = this.me;
+		if (!me) return 0;
+		const minutes = Math.max(0, this.serverNow() - me.goldAsOf) / 60_000;
+		return me.gold + minutes * me.goldPerMinute;
 	}
 
 	// ---------- Local player prediction ----------
