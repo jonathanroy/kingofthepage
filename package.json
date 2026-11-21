@@ -1,0 +1,21 @@
+{
+	"name": "kingofthepage",
+	"private": true,
+	"type": "module",
+	"packageManager": "pnpm@10.34.9",
+	"engines": {
+		"node": ">=22.12"
+	},
+	"scripts": {
+		"dev": "pnpm --parallel --filter @kotp/server --filter @kotp/client dev",
+		"test": "vitest run",
+		"typecheck": "pnpm -r typecheck",
+		"lint": "biome check ."
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.6.8",
+		"@types/node": "^26.6.6",
+		"typescript": "^7.0.2",
+		"vitest": "^5.1.1"
+	}
+}

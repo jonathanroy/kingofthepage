@@ -1,0 +1,38 @@
+// Every tunable number lives here (GAME_DESIGN.md values marked "tunable").
+// Changing a TERRAIN value changes the generated world for every existing seed.
+
+/** §2 Wood and trees */
+export const TREE = {
+	chopsToFell: 1,
+	woodMin: 1,
+	woodMax: 2,
+	regrowDelayMs: 10 * 60 * 1000,
+} as const;
+
+/** §3 Fences: index = level - 1. */
+export const FENCE_LEVELS = [
+	{ level: 1, chopsToBreak: 3, cost: 2, name: "Twig fence" },
+	{ level: 2, chopsToBreak: 6, cost: 3, name: "Plank fence" },
+	{ level: 3, chopsToBreak: 12, cost: 5, name: "Log palisade" },
+	{ level: 4, chopsToBreak: 20, cost: 8, name: "Reinforced palisade" },
+] as const;
+
+export const FENCE = {
+	ownFenceChopsToBreak: 1,
+	/** Applies to every broken fence, own or not. */
+	refundRatio: 0.5,
+} as const;
+
+/** §1 World generation. */
+export const TERRAIN = {
+	/** World units per noise period; larger = bigger lakes and hills. */
+	elevationScale: 96,
+	forestScale: 48,
+	/** Elevation in [-1, 1]. */
+	waterBelow: -0.45,
+	hillAbove: 0.55,
+	/** Forest noise in [-1, 1]; above this, trees become dense. */
+	forestAbove: 0.25,
+	denseForestTreeChance: 0.65,
+	scatteredTreeChance: 0.04,
+} as const;

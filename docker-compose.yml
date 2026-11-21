@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: kotp
+      POSTGRES_PASSWORD: kotp
+      POSTGRES_DB: kotp
+    ports:
+      - "5432:5432"
+    volumes:
+      - kotp-db:/var/lib/postgresql/data
+volumes:
+  kotp-db:
