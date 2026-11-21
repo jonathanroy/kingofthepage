@@ -10,6 +10,28 @@ describe.skipIf(!url)("PgStore", () => {
 	const store = new PgStore(url ?? "");
 	afterAll(() => store.close());
 
+	it("lets only one game server hold the world at a time", async () => {
+		const first = new PgStore(url ?? "");
+		const second = new PgStore(url ?? "");
+		await first.acquireWorldLock(() => {});
+		let waited = false;
+		let acquired = false;
+		const pending = second
+			.acquireWorldLock(() => {
+				waited = true;
+			})
+			.then(() => {
+				acquired = true;
+			});
+		await new Promise((r) => setTimeout(r, 300));
+		expect(waited).toBe(true);
+		expect(acquired).toBe(false);
+		await first.close();
+		await pending;
+		expect(acquired).toBe(true);
+		await second.close();
+	});
+
 	it("migrates, writes a batch and loads it back", async () => {
 		await store.migrate(fileURLToPath(new URL("../../drizzle", import.meta.url)));
 		const id = crypto.randomUUID();

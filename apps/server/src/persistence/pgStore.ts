@@ -12,8 +12,15 @@ function toDirection(value: string): Direction {
 	return DIRECTIONS.find((d) => d === value) ?? "down";
 }
 
+/**
+ * Arbitrary constant naming the "one game server owns the world" lock. Advisory locks are
+ * per database, so different worlds in different databases don't interfere.
+ */
+const WORLD_LOCK_KEY = 4_839_201_771;
+
 export class PgStore implements WorldStore {
 	private readonly client: postgres.Sql;
+	private lockHolder: postgres.ReservedSql | null = null;
 	private readonly db;
 
 	constructor(databaseUrl: string) {
@@ -131,7 +138,29 @@ export class PgStore implements WorldStore {
 		});
 	}
 
+	/**
+	 * Waits until no other game server holds the world, then holds it until `close()`.
+	 * The world lives in memory, so two servers on one database (a deploy that starts the new
+	 * server before stopping the old one, or a mistake) would overwrite each other's changes.
+	 * The lock belongs to one dedicated connection; if the process dies, Postgres releases it.
+	 */
+	async acquireWorldLock(onWait: () => void): Promise<void> {
+		const conn = await this.client.reserve();
+		const [row] = await conn`select pg_try_advisory_lock(${WORLD_LOCK_KEY}::bigint) as locked`;
+		if (!row?.locked) {
+			onWait();
+			await conn`select pg_advisory_lock(${WORLD_LOCK_KEY}::bigint)`;
+		}
+		this.lockHolder = conn;
+	}
+
 	async close(): Promise<void> {
+		// Called after the final flush, so the next server loads everything this one wrote.
+		if (this.lockHolder) {
+			await this.lockHolder`select pg_advisory_unlock(${WORLD_LOCK_KEY}::bigint)`;
+			this.lockHolder.release();
+			this.lockHolder = null;
+		}
 		await this.client.end();
 	}
 }

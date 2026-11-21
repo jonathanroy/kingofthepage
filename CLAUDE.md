@@ -124,6 +124,7 @@ Before saying a task is done, run `pnpm typecheck` and `pnpm test` and make sure
 
 ## Deployment
 
-- A single Linux server runs the Node game server as a supervised long-running process, behind nginx.
-- nginx must proxy WebSocket upgrades (`Upgrade` and `Connection` headers) and serve the built client as static files.
+- Exactly one game server process per world, always on: the world lives in its memory. A Postgres advisory lock makes a second server wait until the first has saved and stopped.
+- Primary target: Railway, built from the root `Dockerfile` (one image with the server and the built client, which the server serves itself in production). See `docs/DEPLOY_RAILWAY.md`.
+- Alternative: a single Linux server running the Node game server under systemd, behind nginx. nginx must proxy WebSocket upgrades (`Upgrade` and `Connection` headers) and serve the built client as static files. See `docs/DEPLOY.md`.
 - Configuration (database URL, world seed, port) comes from environment variables; never commit secrets.

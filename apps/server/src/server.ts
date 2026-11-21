@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { NETWORK } from "@kotp/shared/rules";
 import { Game } from "./game/game";
 import { World } from "./game/world";
+import { createStaticHandler } from "./net/staticFiles";
 import { attachWebSocketServer } from "./net/wsServer";
 import { isEmptyBatch, type WorldStore } from "./persistence/store";
 
@@ -23,6 +24,8 @@ export type StartOptions = {
 	/** Interface to bind; behind nginx this should be 127.0.0.1. */
 	readonly host?: string;
 	readonly store: WorldStore;
+	/** Built client to serve over HTTP, for hosts without nginx in front. */
+	readonly clientDir?: string;
 	readonly now?: () => number;
 	readonly log?: (msg: string) => void;
 };
@@ -45,12 +48,14 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
 		hashToken: (token) => createHash("sha256").update(token).digest("hex"),
 	});
 
+	const serveClient = options.clientDir ? createStaticHandler(options.clientDir) : null;
 	const http = createServer((req, res) => {
 		if (req.url === "/healthz") {
 			res.writeHead(200, { "content-type": "application/json" });
 			res.end(JSON.stringify({ ok: true, online: game.onlineCount() }));
 			return;
 		}
+		if (serveClient?.(req, res)) return;
 		res.writeHead(200, { "content-type": "text/plain" });
 		res.end("King of the Page server\n");
 	});

@@ -62,6 +62,7 @@ Full nesting and controller rules, seeded gold mines with lazy `settleMineGold`,
 ## M7. Deployment ☑
 
 `pnpm build` (Vite client + esbuild server bundle), `pnpm start`, systemd unit, nginx site (static client, `/ws` upgrade proxy, asset caching), env example, update script and `docs/DEPLOY.md`. Server binds via `HOST`, pings sockets every 30 s, and exposes `/healthz`. Verified locally through nginx and against Postgres. Not yet done: a bot load test.
+- Railway: root `Dockerfile` (server serves the built client in production), Postgres world lock so a new deploy waits for the old server to save, `docs/DEPLOY_RAILWAY.md`. Rehearsed locally with Docker: v2 waited for v1, took over on stop, player resumed intact.
 
 ## Assumptions
 

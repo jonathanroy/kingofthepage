@@ -6,6 +6,8 @@ const EnvSchema = z.object({
 	/** Bind address. In production behind nginx, use 127.0.0.1 so only the proxy can reach it. */
 	HOST: z.string().min(1).default("0.0.0.0"),
 	WORLD_SEED: z.string().min(1).optional(),
+	/** Built client folder to serve in production; defaults to apps/client/dist. */
+	CLIENT_DIR: z.string().min(1).optional(),
 	/** Without it the server keeps everything in memory, which is lost on restart. */
 	DATABASE_URL: z.string().url().optional(),
 });
@@ -16,6 +18,7 @@ export type Env = {
 	readonly host: string;
 	readonly worldSeed: string;
 	readonly databaseUrl: string | undefined;
+	readonly clientDir: string | undefined;
 };
 
 export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
@@ -30,5 +33,6 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
 		host: env.HOST,
 		worldSeed: env.WORLD_SEED ?? "kotp-dev-seed",
 		databaseUrl: env.DATABASE_URL,
+		clientDir: env.CLIENT_DIR,
 	};
 }
