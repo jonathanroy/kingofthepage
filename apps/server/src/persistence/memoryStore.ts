@@ -1,4 +1,5 @@
 import type {
+	StoredAlliance,
 	StoredChop,
 	StoredEnclosure,
 	StoredFence,
@@ -14,6 +15,7 @@ export class MemoryStore implements WorldStore {
 	readonly fences = new Map<string, StoredFence>();
 	readonly chops = new Map<string, StoredChop>();
 	readonly enclosures = new Map<string, StoredEnclosure>();
+	readonly alliances = new Map<string, StoredAlliance>();
 	writes = 0;
 
 	async load(): Promise<WorldSnapshot> {
@@ -22,6 +24,7 @@ export class MemoryStore implements WorldStore {
 			fences: [...this.fences.values()],
 			chops: [...this.chops.values()],
 			enclosures: [...this.enclosures.values()],
+			alliances: [...this.alliances.values()],
 		};
 	}
 
@@ -34,6 +37,8 @@ export class MemoryStore implements WorldStore {
 		for (const c of batch.chopsSet) this.chops.set(`${c.x},${c.y}`, c);
 		for (const id of batch.enclosuresRemoved) this.enclosures.delete(id);
 		for (const e of batch.enclosuresAdded) this.enclosures.set(e.id, e);
+		for (const a of batch.alliancesRemoved) this.alliances.delete(`${a.a}|${a.b}`);
+		for (const a of batch.alliancesSet) this.alliances.set(`${a.a}|${a.b}`, a);
 	}
 
 	async close(): Promise<void> {}

@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { FENCE_LEVELS } from "./config";
+import { FENCE, FENCE_LEVELS } from "./config";
 import {
 	buildFence,
+	canMakeGate,
+	canPassGate,
 	canPlaceFence,
+	canUpgradeFence,
+	chopFence,
 	chopsToBreak,
 	fenceBuildCost,
 	fenceRefund,
+	makeGate,
+	needsAllyConfirmation,
 	upgradeCost,
 	upgradeFence,
 } from "./fences";
@@ -66,5 +72,81 @@ describe("fenceRefund", () => {
 		expect(fenceRefund(buildFence("owner"))).toBe(1); // 2 → 1
 		expect(fenceRefund(upgradeTo(2))).toBe(2); // 5 → 2
 		expect(fenceRefund(upgradeTo(4))).toBe(9); // 18 → 9
+	});
+});
+
+describe("chopFence (§3 Chopping fences)", () => {
+	it("adds damage until the level's chops are reached, then breaks with a refund", () => {
+		let f = buildFence("owner");
+		for (let i = 1; i < 3; i++) {
+			const r = chopFence(f, "enemy");
+			if (r.broken) throw new Error("broke too early");
+			expect(r.fence.damage).toBe(i);
+			f = r.fence;
+		}
+		expect(chopFence(f, "enemy")).toEqual({ broken: true, refund: 1 });
+	});
+
+	it("keeps damage from one attacker for the next (damage persists)", () => {
+		const r = chopFence(upgradeTo(2), "alice");
+		if (r.broken) throw new Error("unexpected");
+		const r2 = chopFence(r.fence, "bob");
+		expect(r2.broken ? -1 : r2.fence.damage).toBe(2);
+	});
+
+	it("breaks in one chop for the owner, even when damaged", () => {
+		expect(chopFence({ ...upgradeTo(4), damage: 5 }, "owner").broken).toBe(true);
+	});
+});
+
+describe("upgrades repair (§3)", () => {
+	it("resets damage when upgrading", () => {
+		expect(upgradeFence({ ...buildFence("owner"), damage: 2 }).damage).toBe(0);
+	});
+
+	it("checks ownership, max level and wood", () => {
+		expect(canUpgradeFence(buildFence("owner"), "other", 99)).toEqual({
+			ok: false,
+			reason: "notYourFence",
+		});
+		expect(canUpgradeFence(upgradeTo(4), "owner", 99)).toEqual({ ok: false, reason: "maxLevel" });
+		expect(canUpgradeFence(buildFence("owner"), "owner", 2)).toEqual({
+			ok: false,
+			reason: "notEnoughWood",
+		});
+		expect(canUpgradeFence(buildFence("owner"), "owner", 3)).toEqual({ ok: true, cost: 3 });
+	});
+});
+
+describe("gates (§3 Gates)", () => {
+	it("converts an owner's fence, keeping level and damage, and counts the cost in the refund", () => {
+		const fence = { ...upgradeTo(2), damage: 1 };
+		expect(canMakeGate(fence, "owner", FENCE.gateConversionCost)).toEqual({
+			ok: true,
+			cost: FENCE.gateConversionCost,
+		});
+		const gate = makeGate(fence);
+		expect(gate).toMatchObject({ gate: true, level: 2, damage: 1 });
+		expect(gate.woodInvested).toBe(fence.woodInvested + FENCE.gateConversionCost);
+		expect(canMakeGate(gate, "owner", 99)).toEqual({ ok: false, reason: "alreadyGate" });
+		expect(canMakeGate(fence, "other", 99)).toEqual({ ok: false, reason: "notYourFence" });
+	});
+
+	it("lets only the owner and allies pass", () => {
+		const gate = makeGate(buildFence("owner"));
+		const allies = (id: string) => id === "owner";
+		expect(canPassGate(gate, "owner", () => false)).toBe(true);
+		expect(canPassGate(gate, "friend", allies)).toBe(true);
+		expect(canPassGate(gate, "stranger", () => false)).toBe(false);
+		expect(canPassGate(buildFence("owner"), "owner", () => false)).toBe(false);
+	});
+});
+
+describe("needsAllyConfirmation (§4)", () => {
+	it("applies only to an ally's fence", () => {
+		const f = buildFence("ally");
+		expect(needsAllyConfirmation(f, "me", (id) => id === "ally")).toBe(true);
+		expect(needsAllyConfirmation(f, "me", () => false)).toBe(false);
+		expect(needsAllyConfirmation(f, "ally", () => true)).toBe(false);
 	});
 });

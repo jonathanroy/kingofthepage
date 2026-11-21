@@ -91,6 +91,85 @@
 				font-size: 11px;
 				opacity: 0.8;
 			}
+			#allies {
+				position: fixed;
+				top: 12px;
+				right: 12px;
+				width: 220px;
+				padding: 8px;
+				font-size: 13px;
+				z-index: 5;
+			}
+			#ally-form {
+				display: flex;
+				gap: 4px;
+			}
+			#allies input,
+			#allies button,
+			#confirm button {
+				font: inherit;
+				border: 2px solid var(--light);
+				background: var(--pale);
+				color: var(--dark);
+				padding: 3px 6px;
+				min-width: 0;
+			}
+			#allies input {
+				flex: 1;
+			}
+			#allies button,
+			#confirm button {
+				background: var(--gold);
+				cursor: pointer;
+			}
+			#ally-list {
+				list-style: none;
+				margin: 8px 0 0;
+				padding: 0;
+				display: grid;
+				gap: 4px;
+			}
+			#ally-list li {
+				display: flex;
+				align-items: center;
+				gap: 4px;
+			}
+			#ally-list span {
+				flex: 1;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+			.ally {
+				color: #7cff7c;
+			}
+			.muted {
+				opacity: 0.7;
+			}
+			#confirm {
+				position: fixed;
+				inset: 0;
+				display: grid;
+				place-items: center;
+				background: rgba(15, 56, 15, 0.6);
+				z-index: 30;
+			}
+			#confirm[hidden] {
+				display: none;
+			}
+			#confirm .panel {
+				max-width: min(360px, calc(100vw - 64px));
+			}
+			#confirm .buttons {
+				display: flex;
+				gap: 8px;
+				justify-content: flex-end;
+			}
+			@media (max-width: 640px) {
+				#allies {
+					top: auto;
+					bottom: 80px;
+				}
+			}
 			#toast {
 				position: fixed;
 				left: 50%;
@@ -118,7 +197,20 @@
 		</div>
 		<div id="hud" class="panel" hidden>
 			<div><span id="hud-handle"></span> · Wood <b id="hud-wood">0</b> · <span id="hud-pos"></span></div>
-			<div class="help">Arrows/WASD move · Space chop · F fence (2 wood)</div>
+			<div class="help" id="help"></div>
+		</div>
+		<div id="allies" class="panel" hidden>
+			<form id="ally-form">
+				<input id="ally-handle" maxlength="16" placeholder="Ally with…" autocomplete="off" spellcheck="false" aria-label="Player name to ally with" />
+				<button type="submit">Ask</button>
+			</form>
+			<ul id="ally-list"></ul>
+		</div>
+		<div id="confirm" hidden>
+			<div class="panel">
+				<p id="confirm-text"></p>
+				<div class="buttons"><button type="button" id="confirm-no">Cancel</button><button type="button" id="confirm-yes">Chop it</button></div>
+			</div>
 		</div>
 		<div id="toast" class="panel" hidden></div>
 		<script type="module" src="/src/main.ts"></script>

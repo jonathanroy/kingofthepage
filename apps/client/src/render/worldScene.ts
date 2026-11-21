@@ -1,5 +1,5 @@
 import type { ClientMessage } from "@kotp/shared/protocol";
-import { PACE, type Tile } from "@kotp/shared/rules";
+import { FENCE_LEVELS, PACE, type Tile } from "@kotp/shared/rules";
 import {
 	CHUNK_SIZE,
 	chunkKey,
@@ -7,6 +7,7 @@ import {
 	chunkOrigin,
 	type Direction,
 	neighbors4,
+	stepToward,
 } from "@kotp/shared/world";
 import Phaser from "phaser";
 import type { ClientWorld } from "../state/clientWorld";
@@ -18,17 +19,29 @@ export type SceneDeps = {
 	readonly send: (msg: ClientMessage) => void;
 	readonly nextSeq: () => number;
 	readonly onMeChanged: () => void;
+	/** Shows the §4 warning before chopping an ally's fence. */
+	readonly confirm: (text: string) => Promise<boolean>;
+};
+
+type Action = "chop" | "build" | "upgrade" | "makeGate";
+type Input = Direction | Action;
+const ACTIONS: readonly string[] = ["chop", "build", "upgrade", "makeGate"];
+
+type FenceView = {
+	readonly img: Phaser.GameObjects.Image;
+	readonly cracks: Phaser.GameObjects.Image;
 };
 
 type ChunkView = {
 	readonly layer: Phaser.Tilemaps.TilemapLayer;
 	readonly overlay: Phaser.GameObjects.Graphics;
-	readonly fences: Map<string, Phaser.GameObjects.Image>;
+	readonly fences: Map<string, FenceView>;
 };
 
 type PlayerView = {
 	readonly container: Phaser.GameObjects.Container;
 	readonly body: Phaser.GameObjects.Image;
+	readonly label: Phaser.GameObjects.Text;
 };
 
 const DEPTH = { terrain: 0, overlay: 1, fence: 2, player: 3 } as const;
@@ -69,9 +82,14 @@ export class WorldScene extends Phaser.Scene {
 		right: Phaser.Input.Keyboard.Key[];
 		chop: Phaser.Input.Keyboard.Key;
 		build: Phaser.Input.Keyboard.Key;
+		upgrade: Phaser.Input.Keyboard.Key;
+		makeGate: Phaser.Input.Keyboard.Key;
 	};
 	private nextMoveAt = 0;
-	private readonly inputQueue: (Direction | "chop" | "build")[] = [];
+	private readonly inputQueue: Input[] = [];
+	/** Ally fences the player already agreed to chop (§4: the warning comes before the first chop). */
+	private readonly confirmedAllyFences = new Set<string>();
+	private waitingForConfirm = false;
 	private lastRegrowCheck = 0;
 
 	constructor(private readonly deps: SceneDeps) {
@@ -90,17 +108,20 @@ export class WorldScene extends Phaser.Scene {
 			right: [kb.addKey(K.RIGHT), kb.addKey(K.D)],
 			chop: kb.addKey(K.SPACE),
 			build: kb.addKey(K.F),
+			upgrade: kb.addKey(K.U),
+			makeGate: kb.addKey(K.G),
 		};
 		// Key "down" events, not per-frame polling: Phaser clears a key's just-pressed
 		// flag on release, so a tap shorter than a frame would otherwise be lost.
-		const queue = (input: Direction | "chop" | "build") => {
+		const queue = (input: Input) => {
 			if (this.inputQueue.length < MAX_QUEUED_INPUTS) this.inputQueue.push(input);
 		};
 		for (const dir of DIRECTIONS) {
 			for (const key of this.keys[dir]) key.on("down", () => queue(dir));
 		}
-		this.keys.chop.on("down", () => queue("chop"));
-		this.keys.build.on("down", () => queue("build"));
+		for (const action of ["chop", "build", "upgrade", "makeGate"] as const) {
+			this.keys[action].on("down", () => queue(action));
+		}
 		this.applyZoom();
 		this.scale.on("resize", () => this.applyZoom());
 	}
@@ -124,13 +145,17 @@ export class WorldScene extends Phaser.Scene {
 		if (!this.deps.world.me) return;
 		while (this.inputQueue.length > 0) {
 			const next = this.inputQueue[0];
-			if (next === "chop" || next === "build") {
-				this.deps.send({ type: next, seq: this.deps.nextSeq() });
+			if (this.waitingForConfirm) return;
+			if (next === "chop") {
+				if (!this.sendChop()) return;
+			} else if (next !== undefined && ACTIONS.includes(next)) {
+				this.deps.send({ type: next as Exclude<Action, "chop">, seq: this.deps.nextSeq() });
 			} else if (next !== undefined) {
+				const dir = next as Direction;
 				if (time < this.nextMoveAt) return;
 				// A tap in a new direction only turns, so players can face an empty tile to build.
-				if (this.deps.world.me?.facing === next) this.sendMove(next, time);
-				else this.sendTurn(next, time);
+				if (this.deps.world.me?.facing === dir) this.sendMove(dir, time);
+				else this.sendTurn(dir, time);
 			}
 			this.inputQueue.shift();
 		}
@@ -145,6 +170,46 @@ export class WorldScene extends Phaser.Scene {
 		this.deps.send({ type: "turn", dir, seq: this.deps.nextSeq() });
 		// Holding the key keeps going: walking starts after a short pause, like Pokémon.
 		this.nextMoveAt = time + TURN_PAUSE_MS;
+	}
+
+	/**
+	 * Sends a chop, first asking for confirmation when facing an ally's fence.
+	 * Returns false while waiting for the answer, so the input stays queued.
+	 */
+	private sendChop(): boolean {
+		const { world, send, nextSeq, confirm } = this.deps;
+		const me = world.me;
+		if (!me) return true;
+		const target = stepToward(me.x, me.y, me.facing);
+		const key = `${target.x},${target.y}`;
+		const fence = world.fenceAt(target.x, target.y);
+		const isAllyFence = fence !== null && fence.ownerId !== me.id && world.isAlly(fence.ownerId);
+		if (!isAllyFence || this.confirmedAllyFences.has(key)) {
+			send({ type: "chop", seq: nextSeq(), confirmAlly: isAllyFence });
+			return true;
+		}
+		this.waitingForConfirm = true;
+		const owner = world.handles.get(fence.ownerId) ?? "your ally";
+		void confirm(`This fence belongs to your ally ${owner}. Removing it may open their land.`).then(
+			(ok) => {
+				this.waitingForConfirm = false;
+				if (ok) this.confirmedAllyFences.add(key);
+				else this.inputQueue.shift();
+			},
+		);
+		return false;
+	}
+
+	/** Stops the game from capturing keys while the player types in a text field. */
+	setKeyboardEnabled(enabled: boolean): void {
+		const kb = this.input.keyboard;
+		if (!kb) return;
+		kb.enabled = enabled;
+		if (enabled) kb.enableGlobalCapture();
+		else {
+			kb.disableGlobalCapture();
+			kb.resetKeys();
+		}
 	}
 
 	private sendMove(dir: Direction, time: number): void {
@@ -170,6 +235,7 @@ export class WorldScene extends Phaser.Scene {
 		for (const id of changes.playersRemoved) this.destroyPlayer(id);
 		for (const id of changes.players) this.updatePlayer(id);
 		if (changes.meChanged) this.updateMe();
+		if (changes.alliancesChanged) this.refreshLabels();
 	}
 
 	private createChunk(key: string): void {
@@ -206,7 +272,10 @@ export class WorldScene extends Phaser.Scene {
 		if (!view) return;
 		view.layer.tilemap.destroy();
 		view.overlay.destroy();
-		for (const img of view.fences.values()) img.destroy();
+		for (const f of view.fences.values()) {
+			f.img.destroy();
+			f.cracks.destroy();
+		}
 		this.chunkViews.delete(key);
 	}
 
@@ -222,18 +291,28 @@ export class WorldScene extends Phaser.Scene {
 
 		const existing = view.fences.get(key);
 		if (tile.kind !== "fence") {
-			existing?.destroy();
+			existing?.img.destroy();
+			existing?.cracks.destroy();
 			view.fences.delete(key);
 			return;
 		}
-		const img =
-			existing ??
-			this.add
-				.image(x * TILE, y * TILE, "fence")
+		const f = tile.fence;
+		const fv = existing ?? {
+			img: this.add
+				.image(x * TILE, y * TILE, "fence-1")
 				.setOrigin(0)
-				.setDepth(DEPTH.fence);
-		img.setTint(ownerColor(tile.fence.ownerId, world.me?.id));
-		view.fences.set(key, img);
+				.setDepth(DEPTH.fence),
+			cracks: this.add
+				.image(x * TILE, y * TILE, "cracks")
+				.setOrigin(0)
+				.setDepth(DEPTH.fence),
+		};
+		fv.img.setTexture(`${f.gate ? "gate" : "fence"}-${f.level}`);
+		fv.img.setTint(ownerColor(f.ownerId, world.me?.id));
+		// Damage shows as cracks that darken as the fence nears breaking (§3).
+		const needed = FENCE_LEVELS[f.level - 1]?.chopsToBreak ?? 1;
+		fv.cracks.setVisible(f.damage > 0).setAlpha(Math.min(1, 0.35 + (0.65 * f.damage) / needed));
+		view.fences.set(key, fv);
 	}
 
 	/** Tinted fill for each controlled tile, with a solid edge where ownership changes. */
@@ -265,10 +344,10 @@ export class WorldScene extends Phaser.Scene {
 		const body = this.add.image(0, 0, "player-down").setOrigin(0);
 		body.setTint(ownerColor(id, this.deps.world.me?.id));
 		const label = this.add
-			.text(TILE / 2, -2, handle, {
+			.text(TILE / 2, -2, this.deps.world.isAlly(id) ? `♥ ${handle}` : handle, {
 				fontFamily: "monospace",
 				fontSize: "8px",
-				color: "#ffffff",
+				color: this.labelColor(id),
 				stroke: "#0f380f",
 				strokeThickness: 2,
 				resolution: 4,
@@ -276,7 +355,22 @@ export class WorldScene extends Phaser.Scene {
 			.setOrigin(0.5, 1);
 		const container = this.add.container(x * TILE, y * TILE, [body, label]);
 		container.setDepth(DEPTH.player);
-		return { container, body };
+		return { container, body, label };
+	}
+
+	/** Gold for you, green for allies, white for everyone else: allies must stand out (CLAUDE.md). */
+	private labelColor(id: string): string {
+		const { world } = this.deps;
+		if (id === world.me?.id) return "#ffd60a";
+		return world.isAlly(id) ? "#7cff7c" : "#ffffff";
+	}
+
+	private refreshLabels(): void {
+		for (const [id, view] of this.playerViews) {
+			const p = this.deps.world.players.get(id);
+			view.label.setText(p && this.deps.world.isAlly(id) ? `♥ ${p.handle}` : (p?.handle ?? ""));
+			view.label.setColor(this.labelColor(id));
+		}
 	}
 
 	private glide(view: PlayerView, x: number, y: number): void {

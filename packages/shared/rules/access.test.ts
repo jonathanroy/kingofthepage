@@ -22,6 +22,11 @@ describe("canEnterTile (§5 Access)", () => {
 		expect(canEnterTile("p", [], [enc("1", "q")])).toBe(false);
 	});
 
+	it("lets allies into the land (they come in through gates, §4)", () => {
+		expect(canEnterTile("friend", [], [enc("1", "q")], (id) => id === "q")).toBe(true);
+		expect(canEnterTile("stranger", [], [enc("1", "q")], () => false)).toBe(false);
+	});
+
 	it("lets a trapped player move within the land they are inside", () => {
 		const land = enc("1", "q");
 		expect(canEnterTile("p", [land], [land])).toBe(true);

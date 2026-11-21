@@ -21,7 +21,12 @@ export type StoredFence = {
 	readonly ownerId: string;
 	readonly level: number;
 	readonly woodInvested: number;
+	readonly damage: number;
+	readonly gate: boolean;
 };
+
+/** Stored with `a < b` so each pair has one row. */
+export type StoredAlliance = { readonly a: string; readonly b: string };
 
 export type StoredChop = { readonly x: number; readonly y: number; readonly choppedAt: number };
 
@@ -39,6 +44,7 @@ export type WorldSnapshot = {
 	readonly fences: readonly StoredFence[];
 	readonly chops: readonly StoredChop[];
 	readonly enclosures: readonly StoredEnclosure[];
+	readonly alliances: readonly StoredAlliance[];
 };
 
 export type WriteBatch = {
@@ -49,6 +55,8 @@ export type WriteBatch = {
 	readonly chopsRemoved: readonly { readonly x: number; readonly y: number }[];
 	readonly enclosuresAdded: readonly StoredEnclosure[];
 	readonly enclosuresRemoved: readonly string[];
+	readonly alliancesSet: readonly StoredAlliance[];
+	readonly alliancesRemoved: readonly StoredAlliance[];
 };
 
 export function isEmptyBatch(b: WriteBatch): boolean {
@@ -59,7 +67,9 @@ export function isEmptyBatch(b: WriteBatch): boolean {
 			b.chopsSet.length +
 			b.chopsRemoved.length +
 			b.enclosuresAdded.length +
-			b.enclosuresRemoved.length ===
+			b.enclosuresRemoved.length +
+			b.alliancesSet.length +
+			b.alliancesRemoved.length ===
 		0
 	);
 }

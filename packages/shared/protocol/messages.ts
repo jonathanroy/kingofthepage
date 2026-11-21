@@ -14,10 +14,22 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("move"), dir: DirectionSchema, seq }),
 	/** Face a direction without moving, e.g. to build on an empty tile. */
 	z.object({ type: z.literal("turn"), dir: DirectionSchema, seq }),
-	/** Chop whatever the player faces: tree or fence. */
-	z.object({ type: z.literal("chop"), seq }),
+	/**
+	 * Chop whatever the player faces: tree or fence. `confirmAlly` says the player
+	 * accepted the warning about chopping an ally's fence (§4).
+	 */
+	z.object({ type: z.literal("chop"), seq, confirmAlly: z.boolean().optional() }),
 	/** Build a fence on the tile the player faces. */
 	z.object({ type: z.literal("build"), seq }),
+	/** Upgrade (and repair) the player's own fence they face (§3). */
+	z.object({ type: z.literal("upgrade"), seq }),
+	/** Turn the player's own fence they face into a gate (§3 Gates). */
+	z.object({ type: z.literal("makeGate"), seq }),
+	// §4 Alliances.
+	z.object({ type: z.literal("allyRequest"), handle: z.string().max(64) }),
+	z.object({ type: z.literal("allyAccept"), playerId: z.string().max(64) }),
+	z.object({ type: z.literal("allyDecline"), playerId: z.string().max(64) }),
+	z.object({ type: z.literal("allyEnd"), playerId: z.string().max(64) }),
 ]);
 
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
@@ -39,7 +51,27 @@ export type FenceInfo = {
 	readonly y: number;
 	readonly ownerId: string;
 	readonly level: number;
+	readonly damage: number;
+	readonly gate: boolean;
 };
+
+export type PlayerRef = { readonly id: string; readonly handle: string };
+
+export type Notice =
+	| {
+			readonly kind: "allyChoppingFence";
+			readonly by: PlayerRef;
+			readonly x: number;
+			readonly y: number;
+	  }
+	| { readonly kind: "allianceRequest"; readonly from: PlayerRef }
+	| { readonly kind: "allianceRequestSent"; readonly to: PlayerRef }
+	| { readonly kind: "allianceFormed"; readonly with: PlayerRef }
+	| { readonly kind: "allianceEnded"; readonly with: PlayerRef }
+	| {
+			readonly kind: "allianceRequestFailed";
+			readonly reason: "unknownHandle" | "self" | "alreadyAllies" | "alreadyRequested";
+	  };
 
 export type ChunkControl = {
 	/** Player ids referenced by `cells`; cell value n > 0 means owners[n - 1]. */
@@ -60,7 +92,11 @@ export type ActionRejectReason =
 	| "notEmptyGround"
 	| "occupied"
 	| "notEnoughWood"
-	| "notJoined";
+	| "notJoined"
+	| "maxLevel"
+	| "alreadyGate"
+	| "nothingToUpgrade"
+	| "allyConfirmRequired";
 
 export type ServerMessage =
 	| {
@@ -113,4 +149,12 @@ export type ServerMessage =
 			readonly facing: Facing;
 	  }
 	| { readonly type: "inventory"; readonly wood: number }
+	/** Full alliance state for the receiving player, sent on join and on every change. */
+	| {
+			readonly type: "alliances";
+			readonly allies: readonly PlayerRef[];
+			readonly incoming: readonly PlayerRef[];
+			readonly outgoing: readonly PlayerRef[];
+	  }
+	| { readonly type: "notice"; readonly notice: Notice }
 	| { readonly type: "rejected"; readonly seq: number; readonly reason: ActionRejectReason };

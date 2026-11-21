@@ -51,9 +51,9 @@ Status: ☐ not started · ◐ in progress · ☑ done
 - Own-fence removal (1 chop, 50% refund) is pulled forward from "Next" so breach detection is playable in the MVP.
 - **End of M4 = MVP.**
 
-## M5. "Next" ☐
+## M5. "Next" ☑
 
-Fence upgrades (levels 1–4), chopping others' fences per level with 50% refund, gates, alliances (ally-fence confirmation and owner notification).
+Fence upgrades (levels 1–4, upgrading repairs), chopping others' fences per level with persistent damage and 50% refund, gates by converting a fence, alliances by request and accept (ally-fence confirmation and owner notification). Migration `0001` adds fence damage, gates and the alliances table.
 
 ## M6. "After that" ☐
 

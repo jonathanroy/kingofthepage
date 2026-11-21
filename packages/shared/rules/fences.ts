@@ -1,6 +1,6 @@
 import { FENCE, FENCE_LEVELS } from "./config";
 import { isWalkable, type Tile } from "./tiles";
-import type { Fence, FenceLevel, PlayerId } from "./types";
+import type { AllyCheck, Fence, FenceLevel, PlayerId } from "./types";
 
 const MAX_LEVEL = FENCE_LEVELS.length as FenceLevel;
 
@@ -15,7 +15,7 @@ export function fenceBuildCost(): number {
 }
 
 export function buildFence(ownerId: PlayerId): Fence {
-	return { ownerId, level: 1, woodInvested: fenceBuildCost() };
+	return { ownerId, level: 1, woodInvested: fenceBuildCost(), damage: 0, gate: false };
 }
 
 export type FencePlacement =
@@ -36,6 +36,19 @@ export function upgradeCost(fence: Fence): number | null {
 	return levelInfo((fence.level + 1) as FenceLevel).cost;
 }
 
+export type FenceUpgrade =
+	| { readonly ok: true; readonly cost: number }
+	| { readonly ok: false; readonly reason: "notYourFence" | "maxLevel" | "notEnoughWood" };
+
+export function canUpgradeFence(fence: Fence, actorId: PlayerId, wood: number): FenceUpgrade {
+	if (fence.ownerId !== actorId) return { ok: false, reason: "notYourFence" };
+	const cost = upgradeCost(fence);
+	if (cost === null) return { ok: false, reason: "maxLevel" };
+	if (wood < cost) return { ok: false, reason: "notEnoughWood" };
+	return { ok: true, cost };
+}
+
+/** §3: one level up. Also repairs all damage, the defender's answer to an attack in progress. */
 export function upgradeFence(fence: Fence): Fence {
 	const cost = upgradeCost(fence);
 	if (cost === null) throw new Error("Fence is already at max level");
@@ -43,13 +56,53 @@ export function upgradeFence(fence: Fence): Fence {
 		...fence,
 		level: (fence.level + 1) as FenceLevel,
 		woodInvested: fence.woodInvested + cost,
+		damage: 0,
 	};
+}
+
+export type GateConversion =
+	| { readonly ok: true; readonly cost: number }
+	| { readonly ok: false; readonly reason: "notYourFence" | "alreadyGate" | "notEnoughWood" };
+
+/** §3 Gates: the owner converts one of their fences; it keeps its level and damage. */
+export function canMakeGate(fence: Fence, actorId: PlayerId, wood: number): GateConversion {
+	if (fence.ownerId !== actorId) return { ok: false, reason: "notYourFence" };
+	if (fence.gate) return { ok: false, reason: "alreadyGate" };
+	if (wood < FENCE.gateConversionCost) return { ok: false, reason: "notEnoughWood" };
+	return { ok: true, cost: FENCE.gateConversionCost };
+}
+
+export function makeGate(fence: Fence): Fence {
+	return { ...fence, gate: true, woodInvested: fence.woodInvested + FENCE.gateConversionCost };
+}
+
+/** §3 Gates, §4: only the owner and their allies walk through. */
+export function canPassGate(fence: Fence, playerId: PlayerId, isAlly: AllyCheck): boolean {
+	return fence.gate && (fence.ownerId === playerId || isAlly(fence.ownerId));
 }
 
 /** §3 Chopping fences: the owner opens their own wall in one chop. */
 export function chopsToBreak(fence: Fence, actorId: PlayerId): number {
 	if (fence.ownerId === actorId) return FENCE.ownFenceChopsToBreak;
 	return levelInfo(fence.level).chopsToBreak;
+}
+
+export type FenceChop =
+	| { readonly broken: true; readonly refund: number }
+	| { readonly broken: false; readonly fence: Fence };
+
+/** §3 Chopping fences: damage adds up (and persists) until it reaches the chops needed. */
+export function chopFence(fence: Fence, actorId: PlayerId): FenceChop {
+	const damage = fence.damage + 1;
+	if (fence.ownerId === actorId || damage >= chopsToBreak(fence, actorId)) {
+		return { broken: true, refund: fenceRefund(fence) };
+	}
+	return { broken: false, fence: { ...fence, damage } };
+}
+
+/** §4: chopping an ally's fence needs the chopper to confirm the warning first. */
+export function needsAllyConfirmation(fence: Fence, actorId: PlayerId, isAlly: AllyCheck): boolean {
+	return fence.ownerId !== actorId && isAlly(fence.ownerId);
 }
 
 /** §3: 50% of everything invested, rounded down, whoever breaks it. */

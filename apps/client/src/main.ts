@@ -7,17 +7,19 @@ import { Hud } from "./ui/hud";
 const world = new ClientWorld();
 const hud = new Hud();
 let game: Phaser.Game | null = null;
+let scene: WorldScene | null = null;
 let suggestedHandle = "";
 
 function startGame(): void {
 	if (game) return;
-	const scene = new WorldScene({
+	scene = new WorldScene({
 		world,
 		send: (msg) => connection.send(msg),
 		nextSeq: () => connection.nextSeq(),
 		onMeChanged: () => {
 			if (world.me) hud.update(world.me);
 		},
+		confirm: (text) => hud.confirm(text),
 	});
 	game = new Phaser.Game({
 		type: Phaser.AUTO,
@@ -54,6 +56,12 @@ const connection = new Connection({
 			case "rejected":
 				hud.rejected(msg.reason);
 				break;
+			case "notice":
+				hud.notice(msg.notice);
+				break;
+			case "alliances":
+				hud.renderAlliances(world.alliances);
+				break;
 			default:
 				break;
 		}
@@ -64,4 +72,11 @@ const connection = new Connection({
 });
 
 hud.onJoin((handle) => connection.send({ type: "join", handle }));
+hud.onAlliance({
+	request: (handle) => connection.send({ type: "allyRequest", handle }),
+	accept: (playerId) => connection.send({ type: "allyAccept", playerId }),
+	decline: (playerId) => connection.send({ type: "allyDecline", playerId }),
+	end: (playerId) => connection.send({ type: "allyEnd", playerId }),
+});
+hud.onTypingChange((typing) => scene?.setKeyboardEnabled(!typing));
 connection.open();

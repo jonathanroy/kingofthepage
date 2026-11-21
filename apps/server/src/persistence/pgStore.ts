@@ -26,17 +26,19 @@ export class PgStore implements WorldStore {
 	}
 
 	async load(): Promise<WorldSnapshot> {
-		const [players, fences, chops, enclosures] = await Promise.all([
+		const [players, fences, chops, enclosures, alliances] = await Promise.all([
 			this.db.select().from(schema.players),
 			this.db.select().from(schema.fences),
 			this.db.select().from(schema.choppedTrees),
 			this.db.select().from(schema.enclosures),
+			this.db.select().from(schema.alliances),
 		]);
 		return {
 			players: players.map((p) => ({ ...p, facing: toDirection(p.facing) })),
 			fences,
 			chops,
 			enclosures,
+			alliances: alliances.map((a) => ({ a: a.playerA, b: a.playerB })),
 		};
 	}
 
@@ -66,6 +68,8 @@ export class PgStore implements WorldStore {
 							ownerId: sql`excluded.owner_id`,
 							level: sql`excluded.level`,
 							woodInvested: sql`excluded.wood_invested`,
+							damage: sql`excluded.damage`,
+							gate: sql`excluded.gate`,
 						},
 					});
 			}
@@ -92,6 +96,17 @@ export class PgStore implements WorldStore {
 				await tx
 					.insert(schema.enclosures)
 					.values([...batch.enclosuresAdded])
+					.onConflictDoNothing();
+			}
+			for (const a of batch.alliancesRemoved) {
+				await tx
+					.delete(schema.alliances)
+					.where(and(eq(schema.alliances.playerA, a.a), eq(schema.alliances.playerB, a.b)));
+			}
+			if (batch.alliancesSet.length > 0) {
+				await tx
+					.insert(schema.alliances)
+					.values(batch.alliancesSet.map((a) => ({ playerA: a.a, playerB: a.b })))
 					.onConflictDoNothing();
 			}
 		});

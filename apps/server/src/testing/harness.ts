@@ -99,3 +99,26 @@ export function createHarness(features: Record<string, Terrain> = {}) {
 		},
 	};
 }
+
+type Harness = ReturnType<typeof createHarness>;
+
+/** Builds a closed square ring of radius `r` around (cx, cy) for `id`, placing each fence from outside. */
+export function buildRing(h: Harness, id: string, cx: number, cy: number, r = 1): void {
+	const p = h.world.playerById(id);
+	if (!p) throw new Error("missing player");
+	p.wood += 1000;
+	let t = h.now();
+	for (let x = cx - r; x <= cx + r; x++) {
+		for (let y = cy - r; y <= cy + r; y++) {
+			if (Math.max(Math.abs(x - cx), Math.abs(y - cy)) !== r) continue;
+			const dx = Math.sign(x - cx);
+			const dy = Math.sign(y - cy);
+			const [sx, sy, facing]: [number, number, Direction] =
+				dy !== 0 ? [x, y + dy, dy < 0 ? "down" : "up"] : [x + dx, y, dx < 0 ? "right" : "left"];
+			h.world.relocate(id, sx, sy, facing);
+			t += 1000;
+			const result = h.world.build(id, t);
+			if (!result.ok) throw new Error(`build failed at ${x},${y}: ${result.reason}`);
+		}
+	}
+}

@@ -1,5 +1,13 @@
-import type { FenceInfo, PlayerInfo, ServerMessage } from "@kotp/shared/protocol";
-import { isWalkable, NETWORK, resolveTile, type Tile, type TileDiff } from "@kotp/shared/rules";
+import type { FenceInfo, PlayerInfo, PlayerRef, ServerMessage } from "@kotp/shared/protocol";
+import {
+	type AllyCheck,
+	type Fence,
+	isWalkableFor,
+	NETWORK,
+	resolveTile,
+	type Tile,
+	type TileDiff,
+} from "@kotp/shared/rules";
 import {
 	CHUNK_SIZE,
 	chunkKey,
@@ -41,6 +49,7 @@ export type Changes = {
 	readonly players: Set<string>;
 	readonly playersRemoved: Set<string>;
 	meChanged: boolean;
+	alliancesChanged: boolean;
 };
 
 function emptyChanges(): Changes {
@@ -52,6 +61,7 @@ function emptyChanges(): Changes {
 		players: new Set(),
 		playersRemoved: new Set(),
 		meChanged: false,
+		alliancesChanged: false,
 	};
 }
 
@@ -66,6 +76,12 @@ export class ClientWorld {
 	readonly chunks = new Map<string, ChunkData>();
 	readonly players = new Map<string, PlayerInfo>();
 	readonly handles = new Map<string, string>();
+	alliances: { allies: PlayerRef[]; incoming: PlayerRef[]; outgoing: PlayerRef[] } = {
+		allies: [],
+		incoming: [],
+		outgoing: [],
+	};
+	readonly isAlly: AllyCheck = (id) => this.alliances.allies.some((a) => a.id === id);
 	private serverOffset = 0;
 	private pending: PendingMove[] = [];
 	private changes = emptyChanges();
@@ -128,8 +144,19 @@ export class ClientWorld {
 					this.changes.meChanged = true;
 				}
 				break;
+			case "alliances":
+				this.alliances = {
+					allies: [...msg.allies],
+					incoming: [...msg.incoming],
+					outgoing: [...msg.outgoing],
+				};
+				for (const r of [...msg.allies, ...msg.incoming, ...msg.outgoing])
+					this.handles.set(r.id, r.handle);
+				this.changes.alliancesChanged = true;
+				break;
 			case "joinRejected":
 			case "rejected":
+			case "notice":
 				break;
 		}
 	}
@@ -139,6 +166,12 @@ export class ClientWorld {
 	isLoaded(x: number, y: number): boolean {
 		const { cx, cy } = chunkOfTile(x, y);
 		return this.chunks.has(chunkKey(cx, cy));
+	}
+
+	/** The fence on a tile, if any. */
+	fenceAt(x: number, y: number): Fence | null {
+		const tile = this.tileAt(x, y);
+		return tile.kind === "fence" ? tile.fence : null;
 	}
 
 	tileAt(x: number, y: number): Tile {
@@ -183,10 +216,13 @@ export class ClientWorld {
 		me.facing = dir;
 		this.changes.meChanged = true;
 		const to = stepToward(me.x, me.y, dir);
-		if (!this.isLoaded(to.x, to.y) || !isWalkable(this.tileAt(to.x, to.y))) return;
+		if (!this.isLoaded(to.x, to.y) || !isWalkableFor(this.tileAt(to.x, to.y), me.id, this.isAlly)) {
+			return;
+		}
 		// Approximates §5 Access with controllers only; the server decides with full enclosures.
 		const target = this.controllerAt(to.x, to.y);
-		if (target !== null && target !== me.id && target !== this.controllerAt(me.x, me.y)) return;
+		const mayEnter = target === null || target === me.id || this.isAlly(target);
+		if (!mayEnter && target !== this.controllerAt(me.x, me.y)) return;
 		me.x = to.x;
 		me.y = to.y;
 		this.pending.push({ seq, x: to.x, y: to.y });
@@ -298,7 +334,13 @@ export class ClientWorld {
 	}
 }
 
-function toFence(f: FenceInfo) {
+function toFence(f: FenceInfo): Fence {
 	// The client never needs wood invested; the server owns that number.
-	return { ownerId: f.ownerId, level: f.level as 1 | 2 | 3 | 4, woodInvested: 0 };
+	return {
+		ownerId: f.ownerId,
+		level: f.level as Fence["level"],
+		woodInvested: 0,
+		damage: f.damage,
+		gate: f.gate,
+	};
 }

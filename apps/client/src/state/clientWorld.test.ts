@@ -100,7 +100,7 @@ describe("ClientWorld", () => {
 			x: spot.x + 1,
 			y: spot.y,
 			choppedAt: null,
-			fence: { x: spot.x + 1, y: spot.y, ownerId: "other", level: 1 },
+			fence: { x: spot.x + 1, y: spot.y, ownerId: "other", level: 1, damage: 0, gate: false },
 		});
 		world.predictMove("right", 1);
 		expect(world.me).toMatchObject({ x: spot.x, facing: "right" });

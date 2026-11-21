@@ -1,4 +1,5 @@
 export * from "./access";
+export * from "./alliances";
 export * from "./config";
 export * from "./enclosure";
 export * from "./fences";

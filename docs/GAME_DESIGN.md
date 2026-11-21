@@ -69,10 +69,13 @@ _(All values tunable.)_
 | An ally's   | Per upgrade level | Confirmation dialog before the first chop; the ally gets a notification; the alliance continues |
 
 - Breaking any fence, **your own or someone else's**, returns **50% of the total wood invested** in it (build + upgrades), rounded down.
+- **Damage persists:** chops on a fence add up until it breaks, even across sessions and from different attackers. Nothing heals it except an upgrade.
+- **Upgrading repairs:** upgrading a fence resets its damage to zero, so spending wood is the defender's answer to an attack in progress.
 
 ### Gates
 
 - A gate is a fence segment that players can walk through.
+- The owner **converts one of their existing fences** into a gate for a small extra cost _(tunable, e.g. 2 wood)_. The gate keeps the fence's level and damage, and upgrades, breaks and refunds exactly like a fence.
 - Only the **owner and their allies** can pass through a gate.
 - Gates count as walls for enclosure purposes.
 
@@ -80,7 +83,7 @@ _(All values tunable.)_
 
 ## 4. Alliances
 
-- Players can become allies (friends).
+- Players can become allies (friends) by **request and accept**: one player sends a request to a handle, the other accepts or declines. If both request each other, they become allies.
 - Allies can pass through each other's gates.
 - Allies **can** chop each other's fences, with a warning:
   - Before the first chop, a confirmation dialog appears, e.g. _"This fence belongs to your ally Marco. Removing it may open their land."_
@@ -198,7 +201,6 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
 - Can allies chop trees inside your land?
 - Should alliances be capped (e.g. 3–5 allies) to prevent everyone allying with everyone?
 - Do fence tiles count toward the Land leaderboard?
-- Gates: same durability as fences, or their own upgrade path?
 - Can trees act as walls for enclosure? (Water and hills can; trees are undecided.)
 - **Assumed in code, please confirm:**
   - Trees block movement (like Pokémon), so players walk only on grass and on stumps of chopped trees.

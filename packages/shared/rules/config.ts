@@ -21,6 +21,8 @@ export const FENCE = {
 	ownFenceChopsToBreak: 1,
 	/** Applies to every broken fence, own or not. */
 	refundRatio: 0.5,
+	/** Extra wood to turn one of your fences into a gate (§3 Gates). */
+	gateConversionCost: 2,
 } as const;
 
 /** §1 World generation. */

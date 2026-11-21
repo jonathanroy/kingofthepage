@@ -1,5 +1,6 @@
 import {
 	bigint,
+	boolean,
 	index,
 	integer,
 	pgTable,
@@ -36,6 +37,8 @@ export const fences = pgTable(
 			.references(() => players.id),
 		level: smallint("level").notNull(),
 		woodInvested: integer("wood_invested").notNull(),
+		damage: integer("damage").notNull().default(0),
+		gate: boolean("gate").notNull().default(false),
 	},
 	(t) => [primaryKey({ columns: [t.x, t.y] }), index("fences_owner_idx").on(t.ownerId)],
 );
@@ -59,3 +62,17 @@ export const enclosures = pgTable("enclosures", {
 	anchorX: integer("anchor_x").notNull(),
 	anchorY: integer("anchor_y").notNull(),
 });
+
+/** One row per alliance, with player_a < player_b (§4). */
+export const alliances = pgTable(
+	"alliances",
+	{
+		playerA: uuid("player_a")
+			.notNull()
+			.references(() => players.id),
+		playerB: uuid("player_b")
+			.notNull()
+			.references(() => players.id),
+	},
+	(t) => [primaryKey({ columns: [t.playerA, t.playerB] })],
+);

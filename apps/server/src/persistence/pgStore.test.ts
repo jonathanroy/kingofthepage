@@ -27,12 +27,16 @@ describe.skipIf(!url)("PgStore", () => {
 		};
 		await store.write({
 			players: [player],
-			fencesSet: [{ x: 900_001, y: 1, ownerId: id, level: 1, woodInvested: 2 }],
+			fencesSet: [
+				{ x: 900_001, y: 1, ownerId: id, level: 1, woodInvested: 2, damage: 1, gate: true },
+			],
 			fencesRemoved: [],
 			chopsSet: [{ x: 900_002, y: 1, choppedAt: 1234 }],
 			chopsRemoved: [],
 			enclosuresAdded: [{ id: enclosureId, ownerId: id, createdAt: 5, anchorX: 1, anchorY: 2 }],
 			enclosuresRemoved: [],
+			alliancesSet: [],
+			alliancesRemoved: [],
 		});
 		// Updating and removing in a second batch.
 		await store.write({
@@ -43,6 +47,8 @@ describe.skipIf(!url)("PgStore", () => {
 			chopsRemoved: [],
 			enclosuresAdded: [],
 			enclosuresRemoved: [enclosureId],
+			alliancesSet: [],
+			alliancesRemoved: [],
 		});
 		const snap = await store.load();
 		expect(snap.players.find((p) => p.id === id)).toMatchObject({ wood: 9, facing: "left", x: -5 });

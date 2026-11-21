@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TREE } from "./config";
-import { buildFence } from "./fences";
-import { isWalkable, isWallFor, resolveTile } from "./tiles";
+import { buildFence, makeGate } from "./fences";
+import { isWalkable, isWalkableFor, isWallFor, resolveTile } from "./tiles";
 
 const T0 = 1_000_000;
 
@@ -47,5 +47,13 @@ describe("walls and walkability", () => {
 		expect(isWalkable({ kind: "tree" })).toBe(false);
 		expect(isWalkable({ kind: "water" })).toBe(false);
 		expect(isWalkable({ kind: "hill" })).toBe(false);
+	});
+
+	it("lets the owner and allies walk through gates, which still count as walls", () => {
+		const gate = { kind: "fence", fence: makeGate(buildFence("p1")) } as const;
+		expect(isWalkableFor(gate, "p1", () => false)).toBe(true);
+		expect(isWalkableFor(gate, "p2", (id) => id === "p1")).toBe(true);
+		expect(isWalkableFor(gate, "p3", () => false)).toBe(false);
+		expect(isWallFor(gate, "p1")).toBe(true);
 	});
 });

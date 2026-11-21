@@ -1,6 +1,6 @@
 import type { Terrain } from "../world/terrain";
 import { TREE } from "./config";
-import type { Fence, PlayerId } from "./types";
+import type { AllyCheck, Fence, PlayerId } from "./types";
 
 /** What the server stores on top of the generated terrain for one tile. */
 export type TileDiff = {
@@ -46,6 +46,14 @@ export function resolveTile(
 
 export function isWalkable(tile: Tile): boolean {
 	return tile.kind === "grass" || tile.kind === "stump";
+}
+
+/** Walkable for this player, including gates they may pass (§3 Gates). */
+export function isWalkableFor(tile: Tile, playerId: PlayerId, isAlly: AllyCheck): boolean {
+	if (tile.kind === "fence") {
+		return tile.fence.gate && (tile.fence.ownerId === playerId || isAlly(tile.fence.ownerId));
+	}
+	return isWalkable(tile);
 }
 
 /**

@@ -5,21 +5,27 @@ import type {
 	PlayerInfo,
 } from "@kotp/shared/protocol";
 import {
+	AllianceBook,
+	type AllyCheck,
 	buildFence,
 	type ControllerChange,
 	canChopTree,
 	canEnterTile,
+	canMakeGate,
 	canPlaceFence,
+	canUpgradeFence,
+	chopFence,
 	ENCLOSURE,
 	type Enclosure,
 	type EnclosureChanges,
 	type Fence,
 	type FenceLevel,
 	fenceBuildCost,
-	fenceRefund,
 	fillRegion,
-	isWalkable,
+	isWalkableFor,
 	LandRegistry,
+	makeGate,
+	needsAllyConfirmation,
 	normalizeHandle,
 	PACE,
 	recomputeOwnerEnclosures,
@@ -27,6 +33,7 @@ import {
 	type Tile,
 	type TileDiff,
 	type TileView,
+	upgradeFence,
 	woodFromTree,
 } from "@kotp/shared/rules";
 import {
@@ -70,7 +77,15 @@ export type WorldEvent =
 	| { readonly kind: "tile"; readonly x: number; readonly y: number }
 	| { readonly kind: "control"; readonly changes: readonly ControllerChange[] }
 	| { readonly kind: "player"; readonly id: string; readonly fromX: number; readonly fromY: number }
-	| { readonly kind: "inventory"; readonly id: string };
+	| { readonly kind: "inventory"; readonly id: string }
+	/** §4: tell a fence's owner that an ally started chopping it. */
+	| {
+			readonly kind: "allyChop";
+			readonly ownerId: string;
+			readonly byId: string;
+			readonly x: number;
+			readonly y: number;
+	  };
 
 export type ActionResult =
 	| { readonly ok: true; readonly events: readonly WorldEvent[] }
@@ -98,6 +113,10 @@ export type WorldDeps = {
 export class World {
 	readonly terrain: TerrainGenerator;
 	readonly land = new LandRegistry();
+	readonly alliances = new AllianceBook();
+	/** Ally chopper + fence pairs already reported to the owner, so they hear it once per fence. */
+	private readonly allyChopsReported = new Set<string>();
+	private readonly dirtyAlliances = new Map<string, { a: string; b: string; formed: boolean }>();
 	private readonly players = new Map<string, PlayerState>();
 	private readonly handleIndex = new Map<string, string>();
 	private readonly tokenIndex = new Map<string, string>();
@@ -121,9 +140,16 @@ export class World {
 			this.addPlayer({ ...p, online: false, nextMoveAt: 0, nextActionAt: 0 });
 		for (const f of snapshot.fences) {
 			this.setDiff(f.x, f.y, {
-				fence: { ownerId: f.ownerId, level: f.level as FenceLevel, woodInvested: f.woodInvested },
+				fence: {
+					ownerId: f.ownerId,
+					level: f.level as FenceLevel,
+					woodInvested: f.woodInvested,
+					damage: f.damage,
+					gate: f.gate,
+				},
 			});
 		}
+		for (const a of snapshot.alliances) this.alliances.form(a.a, a.b);
 		for (const c of snapshot.chops) {
 			this.setDiff(c.x, c.y, { choppedAt: c.choppedAt });
 		}
@@ -170,7 +196,14 @@ export class World {
 			chopsRemoved,
 			enclosuresAdded: [...this.enclosuresAdded.values()],
 			enclosuresRemoved: [...this.enclosuresRemoved],
+			alliancesSet: [...this.dirtyAlliances.values()]
+				.filter((d) => d.formed)
+				.map((d) => ({ a: d.a, b: d.b })),
+			alliancesRemoved: [...this.dirtyAlliances.values()]
+				.filter((d) => !d.formed)
+				.map((d) => ({ a: d.a, b: d.b })),
 		};
+		this.dirtyAlliances.clear();
 		this.dirtyPlayers.clear();
 		this.dirtyTiles.clear();
 		this.enclosuresAdded.clear();
@@ -288,11 +321,16 @@ export class World {
 		const turnEvents: WorldEvent[] = turned ? [{ kind: "player", id, fromX: p.x, fromY: p.y }] : [];
 
 		const to = stepToward(p.x, p.y, dir);
-		if (!isWalkable(this.tileAt(to.x, to.y, now))) {
+		if (!isWalkableFor(this.tileAt(to.x, to.y, now), id, this.allyCheck(id))) {
 			return { ok: false, reason: "blocked", events: turnEvents };
 		}
 		if (
-			!canEnterTile(id, this.land.enclosuresAt(from.x, from.y), this.land.enclosuresAt(to.x, to.y))
+			!canEnterTile(
+				id,
+				this.land.enclosuresAt(from.x, from.y),
+				this.land.enclosuresAt(to.x, to.y),
+				this.allyCheck(id),
+			)
 		) {
 			return { ok: false, reason: "noAccess", events: turnEvents };
 		}
@@ -317,7 +355,7 @@ export class World {
 		return { ok: true, events: [{ kind: "player", id, fromX: p.x, fromY: p.y }] };
 	}
 
-	chop(id: string, now: number): ActionResult {
+	chop(id: string, now: number, confirmAlly = false): ActionResult {
 		const p = this.requirePlayer(id);
 		const target = stepToward(p.x, p.y, p.facing);
 		const tile = this.tileAt(target.x, target.y, now);
@@ -339,20 +377,95 @@ export class World {
 			};
 		}
 
-		if (tile.kind === "fence") {
-			// Breaking other players' fences comes with fence levels (PLAN.md M5).
-			if (tile.fence.ownerId !== id) return { ok: false, reason: "notYourFence", events: [] };
-			this.updateDiff(target.x, target.y, { fence: undefined });
-			p.wood += fenceRefund(tile.fence);
-			this.dirtyPlayers.add(id);
-			const control = this.recomputeEnclosures(id, target, now);
-			return {
-				ok: true,
-				events: [{ kind: "tile", ...target }, { kind: "inventory", id }, ...control],
-			};
-		}
+		if (tile.kind === "fence") return this.chopFenceAt(p, target, tile.fence, now, confirmAlly);
 
 		return { ok: false, reason: "nothingToChop", events: [] };
+	}
+
+	private chopFenceAt(
+		p: PlayerState,
+		at: TileCoord,
+		fence: Fence,
+		now: number,
+		confirmAlly: boolean,
+	): ActionResult {
+		const allies = this.allyCheck(p.id);
+		if (needsAllyConfirmation(fence, p.id, allies) && !confirmAlly) {
+			return { ok: false, reason: "allyConfirmRequired", events: [] };
+		}
+		const events: WorldEvent[] = [{ kind: "tile", ...at }];
+		const reportKey = `${p.id}|${tileKey(at.x, at.y)}`;
+		if (allies(fence.ownerId) && !this.allyChopsReported.has(reportKey)) {
+			this.allyChopsReported.add(reportKey);
+			events.push({ kind: "allyChop", ownerId: fence.ownerId, byId: p.id, ...at });
+		}
+
+		const result = chopFence(fence, p.id);
+		if (!result.broken) {
+			this.updateDiff(at.x, at.y, { fence: result.fence });
+			return { ok: true, events };
+		}
+		this.updateDiff(at.x, at.y, { fence: undefined });
+		this.clearAllyChopReports(at);
+		p.wood += result.refund;
+		this.dirtyPlayers.add(p.id);
+		// The fence's owner is the one whose enclosures can change (§5).
+		const control = this.recomputeEnclosures(fence.ownerId, at, now);
+		return { ok: true, events: [...events, { kind: "inventory", id: p.id }, ...control] };
+	}
+
+	/** §3: the owner upgrades the fence they face; upgrading also repairs it. */
+	upgrade(id: string, now: number): ActionResult {
+		const p = this.requirePlayer(id);
+		const target = stepToward(p.x, p.y, p.facing);
+		const tile = this.tileAt(target.x, target.y, now);
+		p.nextActionAt = now + PACE.actionIntervalMs;
+		if (tile.kind !== "fence") return { ok: false, reason: "nothingToUpgrade", events: [] };
+		const check = canUpgradeFence(tile.fence, id, p.wood);
+		if (!check.ok) return { ok: false, reason: check.reason, events: [] };
+		p.wood -= check.cost;
+		this.dirtyPlayers.add(id);
+		this.updateDiff(target.x, target.y, { fence: upgradeFence(tile.fence) });
+		return {
+			ok: true,
+			events: [
+				{ kind: "tile", ...target },
+				{ kind: "inventory", id },
+			],
+		};
+	}
+
+	/** §3 Gates: gates still count as walls, so enclosures don't change. */
+	makeGate(id: string, now: number): ActionResult {
+		const p = this.requirePlayer(id);
+		const target = stepToward(p.x, p.y, p.facing);
+		const tile = this.tileAt(target.x, target.y, now);
+		p.nextActionAt = now + PACE.actionIntervalMs;
+		if (tile.kind !== "fence") return { ok: false, reason: "nothingToUpgrade", events: [] };
+		const check = canMakeGate(tile.fence, id, p.wood);
+		if (!check.ok) return { ok: false, reason: check.reason, events: [] };
+		p.wood -= check.cost;
+		this.dirtyPlayers.add(id);
+		this.updateDiff(target.x, target.y, { fence: makeGate(tile.fence) });
+		return {
+			ok: true,
+			events: [
+				{ kind: "tile", ...target },
+				{ kind: "inventory", id },
+			],
+		};
+	}
+
+	// ---------- Alliances (§4) ----------
+
+	allyCheck(playerId: string): AllyCheck {
+		return (otherId) => this.alliances.areAllies(playerId, otherId);
+	}
+
+	/** Records a formed or ended alliance for persistence. */
+	markAlliance(a: string, b: string, formed: boolean): void {
+		const [x, y] = a < b ? [a, b] : [b, a];
+		this.dirtyAlliances.set(`${x}|${y}`, { a: x, b: y, formed });
 	}
 
 	build(id: string, now: number): ActionResult {
@@ -448,6 +561,13 @@ export class World {
 		return controllerChanges.length > 0 ? [{ kind: "control", changes: controllerChanges }] : [];
 	}
 
+	private clearAllyChopReports(at: TileCoord): void {
+		const suffix = `|${tileKey(at.x, at.y)}`;
+		for (const key of this.allyChopsReported) {
+			if (key.endsWith(suffix)) this.allyChopsReported.delete(key);
+		}
+	}
+
 	private requirePlayer(id: string): PlayerState {
 		const p = this.players.get(id);
 		if (!p) throw new Error(`Unknown player ${id}`);
@@ -525,7 +645,7 @@ function parseKey(key: string): TileCoord {
 }
 
 function fenceInfo(x: number, y: number, f: Fence): FenceInfo {
-	return { x, y, ownerId: f.ownerId, level: f.level };
+	return { x, y, ownerId: f.ownerId, level: f.level, damage: f.damage, gate: f.gate };
 }
 
 function toStoredPlayer(p: PlayerState): StoredPlayer {

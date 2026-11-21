@@ -15,7 +15,10 @@ export type GameDeps = {
 	readonly hashToken: (token: string) => string;
 };
 
-type Intent = Extract<ClientMessage, { type: "move" | "turn" | "chop" | "build" }>;
+type Intent = Extract<
+	ClientMessage,
+	{ type: "move" | "turn" | "chop" | "build" | "upgrade" | "makeGate" }
+>;
 
 type Session = {
 	readonly id: string;
@@ -71,6 +74,13 @@ export class Game {
 				break;
 			case "resume":
 				this.resume(session, msg.token);
+				break;
+			// Alliance changes aren't paced or ordered with movement, so they apply at once.
+			case "allyRequest":
+			case "allyAccept":
+			case "allyDecline":
+			case "allyEnd":
+				if (session.playerId) this.handleAlliance(session.playerId, msg);
 				break;
 			default:
 				this.enqueue(session, msg);
@@ -171,12 +181,89 @@ export class Game {
 			serverTime: now,
 		});
 		this.refreshInterest(session, player);
+		this.sendAlliances(player.id);
 		this.sendNear(
 			player.x,
 			player.y,
 			{ type: "player", player: this.deps.world.playerInfo(player) },
 			player.id,
 		);
+	}
+
+	// ---------- Alliances (§4) ----------
+
+	private handleAlliance(
+		playerId: string,
+		msg: Extract<ClientMessage, { type: "allyRequest" | "allyAccept" | "allyDecline" | "allyEnd" }>,
+	): void {
+		const { world } = this.deps;
+		const book = world.alliances;
+		const me = this.ref(playerId);
+		if (!me) return;
+		const notify = (to: string, notice: Extract<ServerMessage, { type: "notice" }>["notice"]) =>
+			this.sessionOf(to)?.send({ type: "notice", notice });
+
+		if (msg.type === "allyRequest") {
+			const target = world.playerByHandle(msg.handle);
+			if (!target) {
+				notify(playerId, { kind: "allianceRequestFailed", reason: "unknownHandle" });
+				return;
+			}
+			const them = { id: target.id, handle: target.handle };
+			const result = book.request(playerId, target.id);
+			if (result === "formed") {
+				this.allianceFormed(me, them);
+			} else if (result === "requested") {
+				notify(playerId, { kind: "allianceRequestSent", to: them });
+				notify(target.id, { kind: "allianceRequest", from: me });
+			} else {
+				notify(playerId, { kind: "allianceRequestFailed", reason: result });
+			}
+			this.sendAlliances(playerId, target.id);
+			return;
+		}
+
+		const other = this.ref(msg.playerId);
+		if (!other) return;
+		if (msg.type === "allyAccept" && book.accept(playerId, other.id)) {
+			this.allianceFormed(me, other);
+		} else if (msg.type === "allyDecline") {
+			book.decline(playerId, other.id);
+		} else if (msg.type === "allyEnd" && book.end(playerId, other.id)) {
+			// Gate access ends immediately (§4); anyone already inside stays, like any trapped player.
+			world.markAlliance(playerId, other.id, false);
+			notify(other.id, { kind: "allianceEnded", with: me });
+			notify(playerId, { kind: "allianceEnded", with: other });
+		}
+		this.sendAlliances(playerId, other.id);
+	}
+
+	private allianceFormed(
+		a: { id: string; handle: string },
+		b: { id: string; handle: string },
+	): void {
+		this.deps.world.markAlliance(a.id, b.id, true);
+		this.sessionOf(a.id)?.send({ type: "notice", notice: { kind: "allianceFormed", with: b } });
+		this.sessionOf(b.id)?.send({ type: "notice", notice: { kind: "allianceFormed", with: a } });
+	}
+
+	private sendAlliances(...playerIds: string[]): void {
+		const book = this.deps.world.alliances;
+		const refs = (ids: string[]) =>
+			ids.map((id) => this.ref(id)).filter((r): r is { id: string; handle: string } => r !== null);
+		for (const id of playerIds) {
+			this.sessionOf(id)?.send({
+				type: "alliances",
+				allies: refs(book.alliesOf(id)),
+				incoming: refs(book.incomingRequests(id)),
+				outgoing: refs(book.outgoingRequests(id)),
+			});
+		}
+	}
+
+	private ref(playerId: string): { id: string; handle: string } | null {
+		const handle = this.deps.world.handleOf(playerId);
+		return handle ? { id: playerId, handle } : null;
 	}
 
 	// ---------- Intents ----------
@@ -204,10 +291,16 @@ export class Game {
 				result = world.turn(player.id, intent.dir);
 				break;
 			case "chop":
-				result = world.chop(player.id, now);
+				result = world.chop(player.id, now, intent.confirmAlly ?? false);
 				break;
 			case "build":
 				result = world.build(player.id, now);
+				break;
+			case "upgrade":
+				result = world.upgrade(player.id, now);
+				break;
+			case "makeGate":
+				result = world.makeGate(player.id, now);
 				break;
 		}
 		if (intent.type === "move") {
@@ -277,6 +370,16 @@ export class Game {
 				case "control":
 					this.publishControl(e.changes);
 					break;
+				case "allyChop": {
+					const by = this.ref(e.byId);
+					if (by) {
+						this.sessionOf(e.ownerId)?.send({
+							type: "notice",
+							notice: { kind: "allyChoppingFence", by, x: e.x, y: e.y },
+						});
+					}
+					break;
+				}
 			}
 		}
 	}

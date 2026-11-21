@@ -1,7 +1,7 @@
 import { ENCLOSURE, PACE, SPAWN, TREE } from "@kotp/shared/rules";
 import { describe, expect, it } from "vitest";
 import { MemoryStore } from "../persistence/memoryStore";
-import { createHarness } from "../testing/harness";
+import { buildRing, createHarness } from "../testing/harness";
 import { World } from "./world";
 
 const STEP = PACE.moveIntervalMs;
@@ -139,28 +139,6 @@ describe("movement (§1, §5 Access)", () => {
 	});
 });
 
-/** Builds a closed ring of fences around (cx, cy) for `id`, by placing them from outside. */
-function buildRing(h: ReturnType<typeof createHarness>, id: string, cx: number, cy: number, r = 1) {
-	const p = h.world.playerById(id);
-	if (!p) throw new Error("missing player");
-	p.wood += 1000;
-	let t = h.now();
-	for (let x = cx - r; x <= cx + r; x++) {
-		for (let y = cy - r; y <= cy + r; y++) {
-			if (Math.max(Math.abs(x - cx), Math.abs(y - cy)) !== r) continue;
-			// Stand outside the ring, facing the fence tile.
-			const dx = Math.sign(x - cx);
-			const dy = Math.sign(y - cy);
-			const [sx, sy, facing] =
-				dy !== 0 ? [x, y + dy, dy < 0 ? "down" : "up"] : [x + dx, y, dx < 0 ? "right" : "left"];
-			h.relocate(id, sx, sy, facing as "up" | "down" | "left" | "right");
-			t += ACT;
-			const result = h.world.build(id, t);
-			if (!result.ok) throw new Error(`build failed at ${x},${y}: ${result.reason}`);
-		}
-	}
-}
-
 describe("building and claiming (§3, §5)", () => {
 	it("charges wood for a fence and rejects building without enough", () => {
 		const h = createHarness();
@@ -232,22 +210,6 @@ describe("building and claiming (§3, §5)", () => {
 		expect(p.wood).toBe(woodBefore + 1);
 		expect(h.world.land.controllerAt(0, 0)).toBeNull();
 		expect(c.last("control")?.changes).toContainEqual([0, 0, null]);
-	});
-
-	it("refuses to break another player's fence for now (fence levels come in M5)", () => {
-		const h = createHarness();
-		const a = h.client();
-		const aId = a.join("Alice");
-		const b = h.client();
-		const bId = b.join("Bob");
-		const alice = h.world.playerById(aId);
-		if (!alice) throw new Error("missing");
-		alice.wood = 2;
-		h.relocate(aId, 0, 0, "right");
-		expect(h.world.build(aId, h.now()).ok).toBe(true);
-		h.relocate(bId, 2, 0, "left");
-		const result = h.world.chop(bId, h.now() + ACT);
-		expect(result).toMatchObject({ ok: false, reason: "notYourFence" });
 	});
 });
 

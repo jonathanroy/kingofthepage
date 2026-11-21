@@ -58,14 +58,69 @@ function stump(ctx: Ctx, ox: number): void {
 	px(ctx, PALETTE.stump[0], ox + 6, 8, 4, 2);
 }
 
-/** Neutral light fence; tinted with the owner's color at draw time. */
-function fence(ctx: Ctx): void {
+// Fences are drawn light and neutral, then tinted with the owner's color at draw time.
+// Each level must read differently at a glance (CLAUDE.md Client and art).
+
+/** Level 1, twig fence: thin posts and rails. */
+function fenceL1(ctx: Ctx): void {
+	px(ctx, PALETTE.fence[1], 3, 3, 2, 12);
+	px(ctx, PALETTE.fence[1], 11, 3, 2, 12);
+	px(ctx, PALETTE.fence[0], 0, 6, 16, 1);
+	px(ctx, PALETTE.fence[0], 0, 11, 16, 1);
+}
+
+/** Level 2, plank fence: wide boards. */
+function fenceL2(ctx: Ctx): void {
 	px(ctx, PALETTE.fence[1], 2, 2, 3, 13);
 	px(ctx, PALETTE.fence[1], 11, 2, 3, 13);
-	px(ctx, PALETTE.fence[0], 0, 5, 16, 2);
-	px(ctx, PALETTE.fence[0], 0, 10, 16, 2);
-	px(ctx, PALETTE.fence[0], 3, 1, 1, 13);
-	px(ctx, PALETTE.fence[0], 12, 1, 1, 13);
+	px(ctx, PALETTE.fence[0], 0, 4, 16, 3);
+	px(ctx, PALETTE.fence[0], 0, 9, 16, 3);
+	px(ctx, PALETTE.fence[1], 0, 6, 16, 1);
+	px(ctx, PALETTE.fence[1], 0, 11, 16, 1);
+}
+
+/** Level 3, log palisade: tall vertical logs with pointed tops. */
+function fenceL3(ctx: Ctx): void {
+	for (let x = 0; x < 16; x += 4) {
+		px(ctx, PALETTE.fence[0], x, 2, 4, 13);
+		px(ctx, PALETTE.fence[1], x + 3, 2, 1, 13);
+		px(ctx, PALETTE.fence[0], x + 1, 1, 2, 1);
+	}
+}
+
+/** Level 4, reinforced palisade: logs with dark iron bands. */
+function fenceL4(ctx: Ctx): void {
+	fenceL3(ctx);
+	px(ctx, "#404040", 0, 5, 16, 2);
+	px(ctx, "#404040", 0, 11, 16, 2);
+	for (let x = 1; x < 16; x += 4) px(ctx, "#a0a0a0", x, 5, 1, 1);
+}
+
+const FENCE_DRAWERS = [fenceL1, fenceL2, fenceL3, fenceL4] as const;
+
+/** A gate: the level's fence with a doorway cut in the middle and dark hinges. */
+function gate(ctx: Ctx, level: number): void {
+	FENCE_DRAWERS[level - 1]?.(ctx);
+	ctx.clearRect(5, 0, 6, 16);
+	px(ctx, PALETTE.fence[1], 5, 3, 1, 12);
+	px(ctx, PALETTE.fence[1], 10, 3, 1, 12);
+	px(ctx, PALETTE.fence[0], 6, 7, 4, 1);
+	px(ctx, "#202020", 5, 5, 1, 1);
+	px(ctx, "#202020", 5, 12, 1, 1);
+}
+
+/** Cracks drawn over a damaged fence; alpha grows with damage. */
+function cracks(ctx: Ctx): void {
+	for (const [x, y, w, h] of [
+		[4, 3, 1, 3],
+		[5, 6, 1, 2],
+		[6, 8, 1, 3],
+		[11, 4, 1, 4],
+		[10, 8, 1, 3],
+		[12, 10, 1, 2],
+	] as const) {
+		px(ctx, "#1a0d00", x, y, w, h);
+	}
 }
 
 const FACINGS = ["down", "up", "left", "right"] as const;
@@ -109,6 +164,10 @@ export function createTextures(scene: Phaser.Scene): void {
 		hill(ctx, TILE * TILE_FRAME.hill);
 		stump(ctx, TILE * TILE_FRAME.stump);
 	});
-	canvasTexture(scene, "fence", TILE, TILE, fence);
+	FENCE_DRAWERS.forEach((draw, i) => {
+		canvasTexture(scene, `fence-${i + 1}`, TILE, TILE, draw);
+		canvasTexture(scene, `gate-${i + 1}`, TILE, TILE, (ctx) => gate(ctx, i + 1));
+	});
+	canvasTexture(scene, "cracks", TILE, TILE, cracks);
 	for (const f of FACINGS) canvasTexture(scene, `player-${f}`, TILE, TILE, (ctx) => player(ctx, f));
 }
