@@ -1,7 +1,7 @@
 import { tileKey } from "../../world/coords";
 import { type EnclosureLimits, recomputeOwnerEnclosures, type TileView } from "../enclosure";
 import { buildFence } from "../fences";
-import { type ControllerChange, LandRegistry } from "../land";
+import { type ControllerChange, type FenceAt, LandRegistry } from "../land";
 import type { Tile } from "../tiles";
 
 /**
@@ -68,6 +68,14 @@ export class AsciiWorld implements TileView {
 		if (tile.kind !== "fence") throw new Error(`No fence at ${mx},${my}`);
 		this.tiles.set(tileKey(x, y), { kind: "grass" });
 		return this.recompute(tile.fence.ownerId, x, y);
+	}
+
+	fences(): FenceAt[] {
+		return [...this.tiles.entries()].flatMap(([key, t]) => {
+			if (t.kind !== "fence") return [];
+			const [x, y] = key.split(",").map(Number) as [number, number];
+			return [{ x, y, ownerId: t.fence.ownerId }];
+		});
 	}
 
 	controllerAt(mx: number, my: number): string | null {

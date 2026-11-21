@@ -150,7 +150,7 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
 
 | Leaderboard | Ranked by                                                   |
 | ----------- | ----------------------------------------------------------- |
-| Land        | Number of tiles currently controlled (innermost owner only) |
+| Land        | Number of tiles currently controlled (innermost owner only), plus the player's own fence and gate tiles that wall their land. Other players' fences standing inside your land don't count for you; stray fences that wall nothing count for nobody. |
 | Gold        | Total gold earned, all time                                 |
 
 ---
@@ -165,7 +165,7 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
 ### Lazy updates (no timers)
 
 - **Tree regrowth:** when a chunk loads, a tree whose chop timestamp is older than the regrow delay simply exists again.
-- **Gold:** each mine stores `controller_id` and `controlled_since`. When control changes, or when a balance or leaderboard is read, credit `minutes_elapsed × rate` to the controller and reset `controlled_since`.
+- **Gold:** each mine stores `controller_id` and `controlled_since`. When control changes, or when a balance is read, credit `minutes_elapsed × rate` to the controller and reset `controlled_since`. Leaderboards compute the same amount without writing it, so viewing them doesn't cause database writes.
 
 ### Enclosure detection
 
@@ -200,7 +200,6 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
 
 - Can allies chop trees inside your land?
 - Should alliances be capped (e.g. 3–5 allies) to prevent everyone allying with everyone?
-- Do fence tiles count toward the Land leaderboard?
 - Can trees act as walls for enclosure? (Water and hills can; trees are undecided.)
 - **Assumed in code, please confirm:**
   - Trees block movement (like Pokémon), so players walk only on grass and on stumps of chopped trees.

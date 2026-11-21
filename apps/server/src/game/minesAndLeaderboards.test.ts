@@ -120,13 +120,13 @@ describe("leaderboards (§7)", () => {
 
 		small.send({ type: "leaderboard" });
 		const board = small.last("leaderboard");
-		// The mine tile counts as land: it's inside the area, only its gold is special.
+		// Interior (the mine tile included) plus each player's own wall tiles.
 		expect(board?.land.map((e) => [e.handle, e.value])).toEqual([
-			["Big", 9],
-			["Small", 1],
+			["Big", 9 + 16],
+			["Small", 1 + 8],
 		]);
 		expect(board?.gold[0]?.handle).toBe("Big");
-		expect(board?.you).toEqual({ land: 1, gold: 0 });
+		expect(board?.you).toEqual({ land: 9, gold: 0 });
 
 		small.clear();
 		small.send({ type: "leaderboard" });
@@ -134,6 +134,30 @@ describe("leaderboards (§7)", () => {
 		h.skip(LEADERBOARD.minRequestIntervalMs);
 		small.send({ type: "leaderboard" });
 		expect(small.of("leaderboard")).toHaveLength(1);
+	});
+});
+
+describe("leaderboard reads", () => {
+	it("project mine gold without writing, and are cached briefly", () => {
+		const h = createHarness({}, { "0,0": "small" });
+		const c = h.client();
+		const id = c.join("Miner");
+		buildRing(h, id, 0, 0, 1);
+		h.skip(100 * MIN);
+		h.world.takeWriteBatch();
+
+		c.send({ type: "leaderboard" });
+		const first = c.last("leaderboard")?.gold[0]?.value ?? 0;
+		expect(first).toBeGreaterThan(90);
+		expect(h.world.takeWriteBatch().minesSet).toHaveLength(0);
+
+		h.skip(LEADERBOARD.minRequestIntervalMs);
+		c.send({ type: "leaderboard" });
+		expect(c.last("leaderboard")?.gold[0]?.value).toBe(first);
+		// Once the cache expires, a minute of production shows up.
+		h.skip(Math.max(LEADERBOARD.cacheMs, MIN));
+		c.send({ type: "leaderboard" });
+		expect(c.last("leaderboard")?.gold[0]?.value).toBeGreaterThan(first);
 	});
 });
 

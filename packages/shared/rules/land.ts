@@ -2,6 +2,41 @@ import { tileKey } from "../world/coords";
 import type { Enclosure, EnclosureChanges } from "./enclosure";
 import type { PlayerId } from "./types";
 
+export type FenceAt = { readonly x: number; readonly y: number; readonly ownerId: PlayerId };
+
+const AROUND = [
+	[-1, -1],
+	[0, -1],
+	[1, -1],
+	[-1, 0],
+	[1, 0],
+	[-1, 1],
+	[0, 1],
+	[1, 1],
+] as const;
+
+/**
+ * §7 Land leaderboard score per player:
+ * - every tile they control (innermost owner), except other players' fences standing in it;
+ * - plus their own fence and gate tiles that wall one of their enclosures (corners included).
+ * Stray fences that wall nothing don't count, so scattering fences can't farm the score.
+ */
+export function landScores(land: LandRegistry, fences: Iterable<FenceAt>): Map<PlayerId, number> {
+	const scores = land.controlledTileCounts();
+	const bump = (id: PlayerId, delta: number) => scores.set(id, (scores.get(id) ?? 0) + delta);
+	for (const f of fences) {
+		const controller = land.controllerAt(f.x, f.y);
+		// A fence is never inside its own owner's enclosure, so this is always someone else's land.
+		if (controller !== null && controller !== f.ownerId) bump(controller, -1);
+		const wallsOwnLand = AROUND.some(([dx, dy]) =>
+			land.enclosuresAt(f.x + dx, f.y + dy).some((e) => e.ownerId === f.ownerId),
+		);
+		if (wallsOwnLand) bump(f.ownerId, 1);
+	}
+	for (const [id, n] of scores) if (n <= 0) scores.delete(id);
+	return scores;
+}
+
 /** §5 Nesting: the smallest enclosure controls the tile; on a tie, the older one. */
 export function pickController(containing: readonly Enclosure[]): PlayerId | null {
 	let best: Enclosure | null = null;

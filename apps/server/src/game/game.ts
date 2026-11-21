@@ -1,4 +1,9 @@
-import { type ClientMessage, PROTOCOL_VERSION, type ServerMessage } from "@kotp/shared/protocol";
+import {
+	type ClientMessage,
+	type LeaderboardEntry,
+	PROTOCOL_VERSION,
+	type ServerMessage,
+} from "@kotp/shared/protocol";
 import { checkHandle, LEADERBOARD, NETWORK } from "@kotp/shared/rules";
 import { type ChunkCoord, chunkKey, chunkOfTile, type Direction } from "@kotp/shared/world";
 import { suggestHandle } from "./names";
@@ -226,20 +231,47 @@ export class Game {
 	}
 
 	private sendLeaderboard(session: Session): void {
-		if (!session.playerId) return;
+		const playerId = session.playerId;
+		if (!playerId) return;
 		const now = this.deps.now();
 		if (now - session.lastLeaderboardAt < LEADERBOARD.minRequestIntervalMs) return;
 		session.lastLeaderboardAt = now;
-		const { world } = this.deps;
-		const boards = world.leaderboards(now, LEADERBOARD.size);
+		const boards = this.cachedBoards(now);
 		session.send({
 			type: "leaderboard",
-			...boards,
+			land: boards.land,
+			gold: boards.gold,
 			you: {
-				land: world.land.controlledTileCount(session.playerId),
-				gold: Math.floor(world.playerById(session.playerId)?.gold ?? 0),
+				land: boards.scores.land.get(playerId) ?? 0,
+				gold: Math.floor(boards.scores.gold.get(playerId) ?? 0),
 			},
 		});
+	}
+
+	private boardsCache: {
+		at: number;
+		scores: { land: Map<string, number>; gold: Map<string, number> };
+		land: LeaderboardEntry[];
+		gold: LeaderboardEntry[];
+	} | null = null;
+
+	/** Every client asks every 10 s, so the boards are computed once per cache period and shared. */
+	private cachedBoards(now: number) {
+		if (this.boardsCache && now - this.boardsCache.at < LEADERBOARD.cacheMs)
+			return this.boardsCache;
+		const scores = this.deps.world.scores(now);
+		const top = (m: Map<string, number>): LeaderboardEntry[] =>
+			[...m]
+				.map(([id, value]) => ({
+					id,
+					handle: this.deps.world.handleOf(id) ?? "?",
+					value: Math.floor(value),
+				}))
+				.filter((e) => e.value > 0)
+				.sort((a, b) => b.value - a.value || a.handle.localeCompare(b.handle))
+				.slice(0, LEADERBOARD.size);
+		this.boardsCache = { at: now, scores, land: top(scores.land), gold: top(scores.gold) };
+		return this.boardsCache;
 	}
 
 	// ---------- Alliances (§4) ----------

@@ -76,7 +76,7 @@ Before saying a task is done, run `pnpm typecheck` and `pnpm test` and make sure
 ### Lazy time-based state (no timers)
 
 - **Tree regrowth:** store the chop timestamp. A tree exists again once `now - choppedAt >= regrowDelay`. Evaluate when a chunk is loaded or the tile is touched.
-- **Gold:** each mine stores `controllerId` and `controlledSince`. Settle earnings (`minutes × rate`) whenever control changes or a balance or leaderboard is read.
+- **Gold:** each mine stores `controllerId` and `controlledSince`. Settle earnings (`minutes × rate`) whenever control changes or a balance is read. Leaderboards project unsettled gold read-only instead of settling, so reading them doesn't write.
 - Do not create per-tree or per-mine intervals or cron jobs.
 
 ### Enclosure detection

@@ -100,4 +100,6 @@ export const LEADERBOARD = {
 	size: 10,
 	/** Minimum time between leaderboard requests from one client. */
 	minRequestIntervalMs: 2000,
+	/** The server recomputes the boards at most this often and serves the cached copy in between. */
+	cacheMs: 5000,
 } as const;

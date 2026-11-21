@@ -19,11 +19,13 @@ import {
 	type Enclosure,
 	type EnclosureChanges,
 	type Fence,
+	type FenceAt,
 	type FenceLevel,
 	fenceBuildCost,
 	fillRegion,
 	isWalkableFor,
 	LandRegistry,
+	landScores,
 	makeGate,
 	mineGoldPerMinute,
 	needsAllyConfirmation,
@@ -660,20 +662,24 @@ export class World {
 		return rate;
 	}
 
-	/** §7: both leaderboards, with every mine settled first so gold is current. */
-	leaderboards(now: number, size: number) {
-		for (const mine of this.mines.values()) this.creditMine(mine, now);
-		const ref = (id: string) => ({ id, handle: this.handleOf(id) ?? "?" });
-		const land = [...this.land.controlledTileCounts()]
-			.map(([id, value]) => ({ ...ref(id), value }))
-			.sort((a, b) => b.value - a.value || a.handle.localeCompare(b.handle))
-			.slice(0, size);
-		const gold = [...this.players.values()]
-			.filter((p) => p.gold > 0)
-			.map((p) => ({ ...ref(p.id), value: Math.floor(p.gold) }))
-			.sort((a, b) => b.value - a.value || a.handle.localeCompare(b.handle))
-			.slice(0, size);
-		return { land, gold };
+	/**
+	 * §7: every player's Land and Gold scores. Read-only: unsettled mine gold is projected
+	 * rather than credited, so viewing the boards never dirties state for the database.
+	 */
+	scores(now: number): { land: Map<string, number>; gold: Map<string, number> } {
+		const fences: FenceAt[] = [];
+		for (const key of this.fenceKeys) {
+			const { x, y } = parseKey(key);
+			const f = this.getDiff(x, y)?.fence;
+			if (f) fences.push({ x, y, ownerId: f.ownerId });
+		}
+		const gold = new Map<string, number>();
+		for (const p of this.players.values()) if (p.gold > 0) gold.set(p.id, p.gold);
+		for (const mine of this.mines.values()) {
+			const pending = settleMineGold(mine.size, mine, now).earned;
+			gold.set(mine.controllerId, (gold.get(mine.controllerId) ?? 0) + pending);
+		}
+		return { land: landScores(this.land, fences), gold };
 	}
 
 	private clearAllyChopReports(at: TileCoord): void {

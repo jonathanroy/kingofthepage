@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ENCLOSURE } from "./config";
 import { fillRegion, ownFenceBorderShare } from "./enclosure";
+import { landScores } from "./land";
 import { AsciiWorld, map } from "./testing/asciiWorld";
 
 function world(m: string, ownerOrder: string[] = []): AsciiWorld {
@@ -317,5 +318,39 @@ describe("land counts (§7)", () => {
 		w.breakFence(4, 2);
 		expect(w.land.controlledTileCount("b")).toBe(0);
 		expect(w.land.controlledTileCount("a")).toBe(42);
+	});
+});
+
+describe("land scores (§7: own walls count, others' fences inside don't)", () => {
+	it("counts a ring's interior plus its own fence tiles, corners included", () => {
+		const w = world(map`
+			aaaaa
+			a...a
+			a...a
+			aaaaa
+		`);
+		expect(landScores(w.land, w.fences()).get("a")).toBe(6 + 14);
+	});
+
+	it("gives nested walls to their owner and not to the outer controller", () => {
+		const w = world(NESTED, ["a", "b"]);
+		const scores = landScores(w.land, w.fences());
+		// a: 42 interior - 6 (b's area) - 14 (b's fences) + 30 own fence tiles.
+		expect(scores.get("a")).toBe(42 - 6 - 14 + 30);
+		expect(scores.get("b")).toBe(6 + 14);
+	});
+
+	it("doesn't count stray fences, and still removes them from the land they stand in", () => {
+		const w = world(map`
+			aaaaa
+			a...a
+			aaaaa
+		`);
+		w.placeFence(2, 1, "b");
+		w.placeFence(10, 10, "c");
+		const scores = landScores(w.land, w.fences());
+		expect(scores.get("a")).toBe(3 - 1 + 12);
+		expect(scores.has("b")).toBe(false);
+		expect(scores.has("c")).toBe(false);
 	});
 });
