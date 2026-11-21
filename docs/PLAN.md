@@ -38,7 +38,7 @@ Status: ☐ not started · ◐ in progress · ☑ done
 - Interest management by chunk radius. Offline players are removed from view.
 - Drizzle schema + first migration: players, fences, chopped trees, enclosures, tile controllers. Batched writes, flush on chunk unload and shutdown.
 
-- Status: done and tested with an in-memory store. Postgres store written and migrated (`drizzle/0000_init.sql`) but not yet run against a live database.
+- Status: done. Postgres verified: migrations 0000–0002 apply on a fresh database, the store round-trip test passes, and a played session (player, fences, enclosure, chops) survives a server restart.
 - MVP simplification: the whole world state (players, fences, chops, enclosures) is loaded into memory at boot and flushed in batches every 2 s and on shutdown, instead of per-chunk loading. Revisit if the stored world grows large.
 
 ## M4. Client (placeholder art) ☑
@@ -61,7 +61,7 @@ Full nesting and controller rules, seeded gold mines with lazy `settleMineGold`,
 
 ## M7. Deployment ☑
 
-`pnpm build` (Vite client + esbuild server bundle), `pnpm start`, systemd unit, nginx site (static client, `/ws` upgrade proxy, asset caching), env example, update script and `docs/DEPLOY.md`. Server binds via `HOST`, pings sockets every 30 s, and exposes `/healthz`. Verified locally through nginx. Not yet done: a run against a real Postgres, and a bot load test.
+`pnpm build` (Vite client + esbuild server bundle), `pnpm start`, systemd unit, nginx site (static client, `/ws` upgrade proxy, asset caching), env example, update script and `docs/DEPLOY.md`. Server binds via `HOST`, pings sockets every 30 s, and exposes `/healthz`. Verified locally through nginx and against Postgres. Not yet done: a bot load test.
 
 ## Assumptions
 
