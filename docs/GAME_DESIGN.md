@@ -79,6 +79,7 @@ _(All values tunable.)_
 - Breaking any fence, **your own or someone else's**, returns **50% of the total wood invested** in it (build + upgrades), rounded down.
 - **Damage persists:** chops on a fence add up until it breaks, even across sessions and from different attackers. Nothing heals it except the owner's repair.
 - **Repairing:** the owner can repair a damaged fence at any level for wood: 1 wood per 20 chops of damage, rounded up _(tunable)_. Repairs don't count as wood invested, so they don't raise the 50% refund.
+- **Defended walls hold:** a repair clears all damage, and the owner can repair as often as attackers can chop. An online owner with wood can therefore out-repair any attack. This is intended: walls fall when their owner is away or out of wood, so attacks reward timing and draining the defender's wood.
 - **Upgrading needs full health:** a damaged fence must be repaired before it can be upgraded. The same action does both: it repairs a damaged fence, and upgrades an undamaged one.
 
 ### Gates
