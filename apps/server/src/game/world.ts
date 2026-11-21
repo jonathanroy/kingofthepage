@@ -9,7 +9,6 @@ import {
 	type AllyCheck,
 	buildFence,
 	type ControllerChange,
-	canChopTree,
 	canEnterTile,
 	canMakeGate,
 	canPlaceFence,
@@ -405,9 +404,6 @@ export class World {
 		p.nextActionAt = now + PACE.actionIntervalMs;
 
 		if (tile.kind === "tree") {
-			if (!canChopTree(id, this.land.ownersAt(target.x, target.y))) {
-				return { ok: false, reason: "notYourTree", events: [] };
-			}
 			this.updateDiff(target.x, target.y, { choppedAt: now });
 			p.wood += woodFromTree(this.deps.random());
 			this.dirtyPlayers.add(id);

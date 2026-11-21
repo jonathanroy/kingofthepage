@@ -17,7 +17,6 @@ function el<T extends HTMLElement>(id: string): T {
 const REJECT_TEXT: Partial<Record<ActionRejectReason, string>> = {
 	noAccess: "That land belongs to someone else.",
 	nothingToChop: "Nothing to chop there.",
-	notYourTree: "Only the owners of this land can chop its trees.",
 	notYourFence: "That's not your fence.",
 	notEmptyGround: "Fences go on empty ground.",
 	occupied: "Someone is standing there.",

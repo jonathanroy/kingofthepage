@@ -91,7 +91,6 @@ export type ActionRejectReason =
 	| "blocked"
 	| "noAccess"
 	| "nothingToChop"
-	| "notYourTree"
 	| "notYourFence"
 	| "notEmptyGround"
 	| "occupied"

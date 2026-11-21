@@ -214,7 +214,7 @@ describe("building and claiming (§3, §5)", () => {
 });
 
 describe("trees (§2)", () => {
-	it("gives wood, leaves a stump, and only enclosure owners can chop on claimed land", () => {
+	it("gives wood, leaves a stump, and anyone can chop, even in someone else's land", () => {
 		const h = createHarness({ "1,0": "tree", "0,5": "tree" });
 		const c = h.client();
 		const id = c.join("Marco");
@@ -231,10 +231,8 @@ describe("trees (§2)", () => {
 		const ownerId = owner.join("Owner");
 		buildRing(h, ownerId, 0, 5, 2);
 		h.relocate(id, 0, 4, "down"); // trapped inside, facing the tree
-		const result = h.world.chop(id, h.now() + 1000);
-		expect(result).toMatchObject({ ok: false, reason: "notYourTree" });
-		h.relocate(ownerId, 0, 4, "down");
-		expect(h.world.chop(ownerId, h.now() + 2000).ok).toBe(true);
+		expect(h.world.chop(id, h.now() + 1000).ok).toBe(true);
+		expect(h.world.tileAt(0, 5, h.now() + 1000).kind).toBe("stump");
 	});
 
 	it("doesn't regrow while someone stands on the stump, then regrows when they leave", () => {

@@ -78,7 +78,7 @@ export class LandRegistry {
 		return this.enclosuresAtKey(tileKey(x, y));
 	}
 
-	/** Every owner with an enclosure here: all of them may enter and chop (§2, §5 Nesting). */
+	/** Every owner with an enclosure here: all of them may enter (§5 Nesting). */
 	ownersAt(x: number, y: number): PlayerId[] {
 		return [...new Set(this.enclosuresAt(x, y).map((e) => e.ownerId))];
 	}

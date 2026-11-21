@@ -33,10 +33,7 @@ Numbers marked _(tunable)_ are starting values to adjust during playtesting.
 - A tree takes **1 chop** and gives **1–2 wood** _(tunable)_.
 - Chopped trees disappear and **grow back** after a delay _(tunable, e.g. 10 minutes)_.
 - A tree doesn't grow back while a player stands on its stump; it appears as soon as the tile is empty.
-- **Who can chop a tree:**
-  - On unclaimed land: anyone.
-  - On claimed land: only owners of an enclosure containing that tile (see §5, including enclosing owners of nested areas).
-  - On breached land: anyone, since the land is no longer claimed.
+- **Anyone can chop any tree**, on claimed land or not. Fences are what protect your trees: strangers can't reach them unless they get inside (trapped, through a gate as an ally, or through a breach).
 
 ---
 
@@ -100,6 +97,7 @@ _(All values tunable.)_
   - The fence's owner is notified, e.g. _"Julie is chopping your fence at (142, 87)."_
   - Chopping an ally's fence does **not** end the alliance; it may simply be fixing a misplaced fence.
 - Either player can end the alliance at any time, which immediately removes gate access.
+- There is **no limit** on the number of allies.
 - **Betrayal is an accepted part of the game.** An ally can walk in through your gate and act against you. Players should only ally with people they trust.
 
 ---
@@ -126,18 +124,18 @@ _(All values tunable.)_
 
 - If removing a fence leaves the area no longer closed off by the owner's own walls, the owner **loses all of it instantly**.
 - If the area is still closed off (for example, the owner removes a dividing fence between two of their own areas), it simply becomes one larger area. Nothing is lost.
-- Anyone can enter breached land through the opening, and its trees become choppable by anyone.
+- Anyone can enter breached land through the opening and chop its trees.
 - This is why upgrading fences matters: a large territory has a long perimeter, and every segment is a potential weak point.
 
 ### Nesting
 
 - A player can build fences inside another player's land (for example after being trapped there, or as a visiting ally).
-- **Access:** an inner area is shared. Both the inner owner and the enclosing owner(s) can walk in and chop its trees.
+- **Access:** an inner area is shared. Both the inner owner and the enclosing owner(s) can walk in.
 - **Score and gold:** each tile has exactly one **controller**, the owner of the _smallest_ (by area) enclosure containing it. Only the controller gets the tile on the leaderboard and any gold produced there.
 - **Overlapping enclosures:** two players' diagonal walls can cross without sharing a tile, so enclosures may partly overlap without one containing the other. The smallest-enclosure rule still applies tile by tile; on a tie, the **older** enclosure keeps the tile.
-- **Wrapping from outside:** building a ring around someone else's whole territory is nesting seen from outside. The wrapper controls the tiles between the two fence lines, and the inner owner keeps control of their land. Like any enclosing owner, the wrapper can enter the inner land and chop its trees.
+- **Wrapping from outside:** building a ring around someone else's whole territory is nesting seen from outside. The wrapper controls the tiles between the two fence lines, and the inner owner keeps control of their land. Like any enclosing owner, the wrapper can enter the inner land.
 - **Mine theft:** building a ring around a gold mine inside someone else's land makes you the mine's controller. The outer owner's counter is to chop through that inner fence.
-- **Trapped players:** they can't chop trees inside (unless they own an enclosure there). Their way out is to chop through the owner's fence, which breaches the owner's land, or to build their own inner enclosure with wood they were carrying.
+- **Trapped players:** they can chop the trees around them for wood. Their way out is to chop through the owner's fence, which breaches the owner's land, or to build their own inner enclosure.
 
 ---
 
@@ -208,8 +206,6 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
 
 ## 10. Open questions
 
-- Can allies chop trees inside your land?
-- Should alliances be capped (e.g. 3–5 allies) to prevent everyone allying with everyone?
 - Can trees act as walls for enclosure? (Water and hills can; trees are undecided.)
 - **Assumed in code, please confirm:**
   - Trees block movement (like Pokémon), so players walk only on grass and on stumps of chopped trees.
