@@ -138,11 +138,7 @@
 				border: 2px solid var(--panel-inner);
 				border-radius: 999px;
 			}
-			#board li b {
-				font-size: 14px;
-			}
-			.chip b,
-			#status b {
+			.num {
 				font-size: 18px;
 				font-weight: 700;
 				line-height: 1;
@@ -315,7 +311,10 @@
 				width: 21px;
 				height: 18px;
 			}
-			#status .meter b {
+			#board .num {
+				font-size: 14px;
+			}
+			#status .meter .num {
 				font-size: 16px;
 			}
 			.bar {
@@ -526,9 +525,9 @@
 		<div id="hud" class="panel" hidden>
 			<div class="stats">
 				<span id="hud-handle"></span>
-				<span class="chip" title="Wood"><img class="icon" id="icon-wood" alt="Wood" /><b id="hud-wood">0</b></span>
-				<span class="chip" title="Iron"><img class="icon" id="icon-iron" alt="Iron" /><b id="hud-iron">0</b></span>
-				<span class="chip" title="Gold you can spend"><img class="icon coin" id="icon-gold" alt="Gold" /><b id="hud-gold">0</b><span id="hud-rate"></span></span>
+				<span class="chip" title="Wood"><img class="icon" id="icon-wood" alt="Wood" /><b class="num" id="hud-wood">0</b></span>
+				<span class="chip" title="Iron"><img class="icon" id="icon-iron" alt="Iron" /><b class="num" id="hud-iron">0</b></span>
+				<span class="chip" title="Gold you can spend"><img class="icon coin" id="icon-gold" alt="Gold" /><b class="num" id="hud-gold">0</b><span id="hud-rate"></span></span>
 				<span id="hud-pos" title="Your position (x, y)"></span>
 			</div>
 			<div id="compass">
@@ -539,14 +538,14 @@
 			<div class="help" id="help"></div>
 		</div>
 		<div id="status" class="panel" hidden>
-			<div class="meter"><img class="icon" id="icon-health" alt="Health" /><div class="bar"><span id="bar-health" class="fill health"></span></div><b id="num-health">100</b></div>
-			<div class="meter"><img class="icon" id="icon-food" alt="Food" /><div class="bar"><span id="bar-food" class="fill food"></span></div><b id="num-food">100</b></div>
-			<div class="meter"><img class="icon" id="icon-water" alt="Water" /><div class="bar"><span id="bar-water" class="fill water"></span></div><b id="num-water">100</b></div>
+			<div class="meter"><img class="icon" id="icon-health" alt="Health" /><div class="bar"><span id="bar-health" class="fill health"></span></div><b class="num" id="num-health">100</b></div>
+			<div class="meter"><img class="icon" id="icon-food" alt="Food" /><div class="bar"><span id="bar-food" class="fill food"></span></div><b class="num" id="num-food">100</b></div>
+			<div class="meter"><img class="icon" id="icon-water" alt="Water" /><div class="bar"><span id="bar-water" class="fill water"></span></div><b class="num" id="num-water">100</b></div>
 			<div class="pantry">
-				<span class="food-count"><img class="icon" id="icon-apple" alt="Apples" /> <b id="food-apple">0</b></span>
-				<span class="food-count"><img class="icon" id="icon-berries" alt="Berries" /> <b id="food-berries">0</b></span>
-				<span class="food-count"><img class="icon" id="icon-potato" alt="Potatoes" /> <b id="food-potato">0</b></span>
-				<span class="food-count"><img class="icon" id="icon-meat" alt="Meat" /> <b id="food-meat">0</b></span>
+				<span class="food-count"><img class="icon" id="icon-apple" alt="Apples" /> <b class="num" id="food-apple">0</b></span>
+				<span class="food-count"><img class="icon" id="icon-berries" alt="Berries" /> <b class="num" id="food-berries">0</b></span>
+				<span class="food-count"><img class="icon" id="icon-potato" alt="Potatoes" /> <b class="num" id="food-potato">0</b></span>
+				<span class="food-count"><img class="icon" id="icon-meat" alt="Meat" /> <b class="num" id="food-meat">0</b></span>
 			</div>
 			<div class="tool-row"><b id="tool">Axe</b> <span id="tool-hint" class="muted"></span></div>
 		</div>

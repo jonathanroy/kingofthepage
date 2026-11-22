@@ -409,7 +409,7 @@ export class Hud {
 				: entries
 						.map(
 							(e, i) =>
-								`<li${e.id === myId ? ' class="me"' : ""}><span>${i + 1}. ${esc(e.handle)}</span><b>${formatCount(e.value)}</b></li>`,
+								`<li${e.id === myId ? ' class="me"' : ""}><span>${i + 1}. ${esc(e.handle)}</span><b class="num">${formatCount(e.value)}</b></li>`,
 						)
 						.join("");
 		el("board-land").innerHTML = list(board.land);
