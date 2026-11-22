@@ -97,7 +97,10 @@ import type {
 export type PlayerState = {
 	readonly id: string;
 	readonly handle: string;
-	readonly tokenHash: string;
+	/** Replaced on every password login, which signs out other browsers. */
+	tokenHash: string;
+	/** Set once the player saves their profile; null for token-only players. */
+	passwordHash: string | null;
 	readonly createdAt: number;
 	x: number;
 	y: number;
@@ -365,6 +368,21 @@ export class World {
 		return id ? this.players.get(id) : undefined;
 	}
 
+	/** Saves the profile with a (hashed) password. */
+	setPasswordHash(id: string, passwordHash: string): void {
+		this.requirePlayer(id).passwordHash = passwordHash;
+		this.dirtyPlayers.add(id);
+	}
+
+	/** Issues a new resume token; the old one stops working. */
+	replaceTokenHash(id: string, tokenHash: string): void {
+		const p = this.requirePlayer(id);
+		this.tokenIndex.delete(p.tokenHash);
+		p.tokenHash = tokenHash;
+		this.tokenIndex.set(tokenHash, id);
+		this.dirtyPlayers.add(id);
+	}
+
 	playerByTokenHash(tokenHash: string): PlayerState | undefined {
 		const id = this.tokenIndex.get(tokenHash);
 		return id ? this.players.get(id) : undefined;
@@ -389,6 +407,7 @@ export class World {
 			id: input.id,
 			handle: input.handle,
 			tokenHash: input.tokenHash,
+			passwordHash: null,
 			createdAt: input.now,
 			x: input.at.x,
 			y: input.at.y,
@@ -1175,6 +1194,7 @@ function toStoredPlayer(p: PlayerState): StoredPlayer {
 		id: p.id,
 		handle: p.handle,
 		tokenHash: p.tokenHash,
+		passwordHash: p.passwordHash,
 		x: p.x,
 		y: p.y,
 		facing: p.facing,

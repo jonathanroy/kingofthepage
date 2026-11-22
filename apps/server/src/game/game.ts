@@ -4,7 +4,14 @@ import {
 	PROTOCOL_VERSION,
 	type ServerMessage,
 } from "@kotp/shared/protocol";
-import { checkHandle, LEADERBOARD, NETWORK, SURVIVAL } from "@kotp/shared/rules";
+import {
+	checkHandle,
+	LEADERBOARD,
+	NETWORK,
+	normalizeHandle,
+	PROFILE,
+	SURVIVAL,
+} from "@kotp/shared/rules";
 import {
 	type ChunkCoord,
 	chunkKey,
@@ -12,6 +19,7 @@ import {
 	type Direction,
 	stepToward,
 } from "@kotp/shared/world";
+import type { PasswordHasher } from "../auth/passwords";
 import { suggestHandle } from "./names";
 import { MagicShop, type ShopState } from "./shop";
 import { findSpawnTile } from "./spawn";
@@ -26,6 +34,7 @@ export type GameDeps = {
 	readonly newId: () => string;
 	readonly newToken: () => string;
 	readonly hashToken: (token: string) => string;
+	readonly passwords: PasswordHasher;
 	/** Spawn animals and bears around players; tests usually place them by hand. */
 	readonly autoSpawnCreatures?: boolean;
 };
@@ -57,6 +66,8 @@ type Session = {
 	queue: Intent[];
 	knownChunks: Set<string>;
 	lastLeaderboardAt: number;
+	/** A password check is running; one at a time per connection. */
+	authBusy: boolean;
 };
 
 /**
@@ -66,6 +77,8 @@ type Session = {
 export class Game {
 	private readonly sessions = new Map<string, Session>();
 	private readonly sessionByPlayer = new Map<string, string>();
+	/** Failed logins per handle (§ saved profiles); locks a handle for a while after too many. */
+	private readonly failedLogins = new Map<string, { count: number; lockedUntil: number }>();
 
 	readonly wildlife: Wildlife;
 	readonly shop: MagicShop;
@@ -92,6 +105,7 @@ export class Game {
 			queue: [],
 			knownChunks: new Set(),
 			lastLeaderboardAt: Number.NEGATIVE_INFINITY,
+			authBusy: false,
 		});
 		send({
 			type: "hello",
@@ -125,6 +139,12 @@ export class Game {
 				break;
 			case "resume":
 				this.resume(session, msg.token);
+				break;
+			case "login":
+				void this.login(session, msg.handle, msg.password);
+				break;
+			case "setPassword":
+				void this.savePassword(session, msg.password, msg.current);
 				break;
 			// Alliance changes aren't paced or ordered with movement, so they apply at once.
 			case "allyRequest":
@@ -227,14 +247,87 @@ export class Game {
 			session.send({ type: "joinRejected", reason: "badToken" });
 			return;
 		}
-		// A second tab or a reconnect before the old socket timed out: the newest wins.
-		const previous = this.sessionByPlayer.get(player.id);
-		if (previous) {
-			const old = this.sessions.get(previous);
-			this.disconnect(previous);
-			old?.close();
-		}
+		this.takeOver(player.id);
 		this.enterWorld(session, player, token);
+	}
+
+	// ---------- Saved profiles ----------
+
+	/** Log in with handle and password: issues a fresh token, which signs out other browsers. */
+	private async login(session: Session, handle: string, password: string): Promise<void> {
+		if (session.playerId || session.authBusy) return;
+		const key = normalizeHandle(handle);
+		const now = this.deps.now();
+		const failures = this.failedLogins.get(key);
+		if (failures && now < failures.lockedUntil) {
+			session.send({ type: "joinRejected", reason: "tooManyAttempts" });
+			return;
+		}
+		session.authBusy = true;
+		const player = this.deps.world.playerByHandle(handle);
+		// Unknown handles still pay for a hash check, so timing doesn't reveal which names exist.
+		const stored = player?.passwordHash ?? (await this.dummyHash());
+		const ok = (await this.deps.passwords.verify(password, stored)) && !!player?.passwordHash;
+		session.authBusy = false;
+		if (!this.sessions.has(session.id) || session.playerId) return;
+		if (!ok || !player) {
+			this.recordFailedLogin(key);
+			session.send({ type: "joinRejected", reason: "badLogin" });
+			return;
+		}
+		this.failedLogins.delete(key);
+		const token = this.deps.newToken();
+		this.deps.world.replaceTokenHash(player.id, this.deps.hashToken(token));
+		this.takeOver(player.id);
+		this.enterWorld(session, player, token);
+	}
+
+	private recordFailedLogin(key: string): void {
+		const count = (this.failedLogins.get(key)?.count ?? 0) + 1;
+		const locked = count >= PROFILE.maxFailedLogins;
+		this.failedLogins.set(key, {
+			count: locked ? 0 : count,
+			lockedUntil: locked ? this.deps.now() + PROFILE.lockoutMs : 0,
+		});
+	}
+
+	private dummyHashValue: Promise<string> | null = null;
+	private dummyHash(): Promise<string> {
+		this.dummyHashValue ??= this.deps.passwords.hash("no profile here");
+		return this.dummyHashValue;
+	}
+
+	/** Save the profile with a password. Changing an existing password needs the current one. */
+	private async savePassword(session: Session, password: string, current?: string): Promise<void> {
+		const playerId = session.playerId;
+		if (!playerId) return;
+		if (session.authBusy) {
+			session.send({ type: "profileRejected", reason: "busy" });
+			return;
+		}
+		session.authBusy = true;
+		try {
+			const existing = this.deps.world.playerById(playerId)?.passwordHash;
+			if (existing && !(await this.deps.passwords.verify(current ?? "", existing))) {
+				session.send({ type: "profileRejected", reason: "wrongCurrent" });
+				return;
+			}
+			const hash = await this.deps.passwords.hash(password);
+			if (!this.deps.world.playerById(playerId)) return;
+			this.deps.world.setPasswordHash(playerId, hash);
+			session.send({ type: "profileSaved" });
+		} finally {
+			session.authBusy = false;
+		}
+	}
+
+	/** A second tab or a reconnect before the old socket timed out: the newest wins. */
+	private takeOver(playerId: string): void {
+		const previous = this.sessionByPlayer.get(playerId);
+		if (!previous) return;
+		const old = this.sessions.get(previous);
+		this.disconnect(previous);
+		old?.close();
 	}
 
 	private enterWorld(session: Session, player: PlayerState, token: string): void {
@@ -251,6 +344,7 @@ export class Game {
 			gold: 0,
 			goldPerMinute: 0,
 			serverTime: now,
+			hasPassword: player.passwordHash !== null,
 		});
 		// Offline earnings (§6) are settled and shown as soon as the player is back.
 		this.sendInventory(player.id);

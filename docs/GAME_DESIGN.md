@@ -22,7 +22,8 @@ Numbers marked _(tunable)_ are starting values to adjust during playtesting.
 
 ### Players and spawning
 
-- A player joins by choosing a **handle**, which must be unique. A random fun name is suggested by default so a new player can start right away. No password or email.
+- A player joins by choosing a **handle**, which must be unique. A random fun name is suggested by default so a new player can start right away. No email, and no password needed to start: the browser remembers the player.
+- **Saved profile (optional):** a player can set a password at any time, then log back in with handle and password from any browser. Logging in signs out other browsers. Changing the password needs the current one. Repeated wrong passwords lock that handle's logins for a few minutes _(tunable)_. There's no password reset, since there's no email.
 - New players spawn on a random **unenclosed** tile **near an existing fence**. If no fence exists in the world yet, they spawn anywhere.
 - Returning players reappear **where they left**, even if that spot has since been enclosed (they are then trapped, see §5 Access).
 

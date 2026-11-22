@@ -81,6 +81,15 @@ export const HANDLE = {
 	pattern: /^[A-Za-z0-9_]+$/,
 } as const;
 
+/** Saved profiles: log back in with handle and password from any browser. */
+export const PROFILE = {
+	passwordMinLength: 8,
+	passwordMaxLength: 128,
+	/** Failed logins for one handle before it is locked for a while, to slow down guessing. */
+	maxFailedLogins: 5,
+	lockoutMs: 5 * 60_000,
+} as const;
+
 export const SPAWN = {
 	/** Distance range from a random existing fence. */
 	nearFenceMin: 3,

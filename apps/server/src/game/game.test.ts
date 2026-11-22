@@ -1,4 +1,4 @@
-import { ENCLOSURE, PACE, SPAWN, TREE } from "@kotp/shared/rules";
+import { ENCLOSURE, PACE, PROFILE, SPAWN, TREE } from "@kotp/shared/rules";
 import { describe, expect, it } from "vitest";
 import { MemoryStore } from "../persistence/memoryStore";
 import { buildRing, createHarness } from "../testing/harness";
@@ -407,5 +407,104 @@ describe("swimming (§1 Movement)", () => {
 		h.relocate(id, 0, 0, "right");
 		expect(h.world.build(id, h.now())).toMatchObject({ ok: false });
 		expect(h.world.tileAt(1, 0, h.now()).kind).toBe("water");
+	});
+});
+
+describe("saved profiles", () => {
+	/** Lets the async password checks finish. */
+	const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+	async function savedProfile(h: ReturnType<typeof createHarness>) {
+		const c = h.client();
+		const id = c.join("Marco");
+		c.send({ type: "setPassword", password: "hunter22" });
+		await settle();
+		expect(c.last("profileSaved")).toBeTruthy();
+		return { c, id };
+	}
+
+	it("starts without a password and saves one", async () => {
+		const h = createHarness();
+		const c = h.client();
+		c.join("Marco");
+		expect(c.last("joined")?.hasPassword).toBe(false);
+		c.send({ type: "setPassword", password: "hunter22" });
+		await settle();
+		expect(c.last("profileSaved")).toBeTruthy();
+		expect(h.world.takeWriteBatch().players[0]?.passwordHash).toBeTruthy();
+	});
+
+	it("logs back in from another browser, in any letter case, and signs out the old one", async () => {
+		const h = createHarness();
+		const { c: first, id } = await savedProfile(h);
+		const oldToken = first.last("joined")?.token ?? "";
+		const second = h.client();
+		second.send({ type: "login", handle: "marco", password: "hunter22" });
+		await settle();
+		const joined = second.last("joined");
+		expect(joined).toMatchObject({ you: { id }, hasPassword: true });
+		expect(joined?.token).not.toBe(oldToken);
+		expect(first.closed).toBe(true);
+		// The old browser's token no longer resumes; the new one does.
+		const third = h.client();
+		third.send({ type: "resume", token: oldToken });
+		expect(third.last("joinRejected")?.reason).toBe("badToken");
+	});
+
+	it("gives the same answer for a wrong password and an unknown or unsaved name", async () => {
+		const h = createHarness();
+		await savedProfile(h);
+		h.client().join("Nopass");
+		for (const [handle, password] of [
+			["Marco", "wrong-pass"],
+			["Ghost", "hunter22"],
+			["Nopass", "anything"],
+		] as const) {
+			const c = h.client();
+			c.send({ type: "login", handle, password });
+			await settle();
+			expect(c.last("joinRejected")?.reason).toBe("badLogin");
+			expect(c.last("joined")).toBeUndefined();
+		}
+	});
+
+	it("locks a name after too many failed logins, then lets it in again", async () => {
+		const h = createHarness();
+		await savedProfile(h);
+		const c = h.client();
+		for (let i = 0; i < PROFILE.maxFailedLogins; i++) {
+			c.send({ type: "login", handle: "Marco", password: "nope-nope" });
+			await settle();
+		}
+		c.send({ type: "login", handle: "Marco", password: "hunter22" });
+		await settle();
+		expect(c.last("joinRejected")?.reason).toBe("tooManyAttempts");
+		h.skip(PROFILE.lockoutMs);
+		c.send({ type: "login", handle: "Marco", password: "hunter22" });
+		await settle();
+		expect(c.last("joined")).toBeTruthy();
+	});
+
+	it("needs the current password to change it", async () => {
+		const h = createHarness();
+		const { c } = await savedProfile(h);
+		c.send({ type: "setPassword", password: "newpass99", current: "wrong" });
+		await settle();
+		expect(c.last("profileRejected")?.reason).toBe("wrongCurrent");
+		c.send({ type: "setPassword", password: "newpass99", current: "hunter22" });
+		await settle();
+		const other = h.client();
+		other.send({ type: "login", handle: "Marco", password: "newpass99" });
+		await settle();
+		expect(other.last("joined")).toBeTruthy();
+	});
+
+	it("survives a save and reload", async () => {
+		const h = createHarness();
+		await savedProfile(h);
+		const store = new MemoryStore();
+		await store.write(h.world.takeWriteBatch());
+		const snapshot = await store.load();
+		expect(snapshot.players[0]?.passwordHash).toBe("pw:hunter22");
 	});
 });

@@ -22,6 +22,7 @@ export const players = pgTable("players", {
 	/** Lowercased handle; enforces case-insensitive uniqueness. */
 	handleKey: text("handle_key").notNull().unique(),
 	tokenHash: text("token_hash").notNull().unique(),
+	passwordHash: text("password_hash"),
 	x: integer("x").notNull(),
 	y: integer("y").notNull(),
 	facing: text("facing").notNull(),

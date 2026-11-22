@@ -43,6 +43,13 @@
       "when": 1795308246817,
       "tag": "0005_magic_shop",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795310556088,
+      "tag": "0006_saved_profiles",
+      "breakpoints": true
     }
   ]
 }

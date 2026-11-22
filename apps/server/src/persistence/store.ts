@@ -8,6 +8,8 @@ export type StoredPlayer = {
 	readonly id: string;
 	readonly handle: string;
 	readonly tokenHash: string;
+	/** scrypt hash with its salt and cost settings; null until the profile is saved. */
+	readonly passwordHash: string | null;
 	readonly x: number;
 	readonly y: number;
 	readonly facing: Direction;

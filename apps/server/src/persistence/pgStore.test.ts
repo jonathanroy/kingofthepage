@@ -41,6 +41,7 @@ describe.skipIf(!url)("PgStore", () => {
 			id,
 			handle: `T${id.slice(0, 8)}`,
 			tokenHash: `hash-${id}`,
+			passwordHash: "scrypt$16384$8$1$c2FsdA==$a2V5" as string | null,
 			x: -5,
 			y: 7,
 			facing: "left" as const,

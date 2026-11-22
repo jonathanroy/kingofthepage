@@ -110,9 +110,65 @@
 				font-size: 21px;
 				padding: 8px 12px;
 			}
-			#join-error {
+			#join-error,
+			#profile-error {
 				color: var(--danger);
 				min-height: 1em;
+			}
+			#login-form {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 8px;
+			}
+			#join-form[hidden],
+			#login-form[hidden] {
+				display: none;
+			}
+			#login-form input {
+				flex: 1 1 140px;
+			}
+			#join button.link {
+				background: none;
+				border: none;
+				box-shadow: none;
+				padding: 0;
+				font-size: 18px;
+				color: var(--muted);
+				text-decoration: underline;
+				cursor: pointer;
+			}
+			#profile-btn {
+				font-size: 15px;
+				padding: 2px 8px;
+			}
+			#profile-btn.saved {
+				opacity: 0.7;
+			}
+			#profile-form {
+				display: grid;
+				gap: 8px;
+				margin-top: 8px;
+			}
+			#profile-form label {
+				display: grid;
+				gap: 2px;
+				font-size: 18px;
+			}
+			#profile-form label[hidden] {
+				display: none;
+			}
+			#profile-form input {
+				font-size: 20px;
+				padding: 6px 10px;
+			}
+			#profile-error {
+				margin: 0;
+				font-size: 18px;
+			}
+			#profile-intro {
+				margin: 0;
+				font-size: 18px;
+				color: var(--muted);
 			}
 			#hud {
 				position: fixed;
@@ -222,6 +278,7 @@
 			}
 			.modal .buttons {
 				display: flex;
+				gap: 8px;
 				justify-content: flex-end;
 				margin-top: 10px;
 			}
@@ -518,7 +575,13 @@
 					<input id="join-handle" maxlength="16" autocomplete="off" spellcheck="false" aria-label="Your name" />
 					<button type="submit">Play</button>
 				</form>
+				<form id="login-form" hidden>
+					<input id="login-handle" maxlength="16" autocomplete="username" spellcheck="false" placeholder="Name" aria-label="Your name" />
+					<input id="login-password" type="password" maxlength="128" autocomplete="current-password" placeholder="Password" aria-label="Password" />
+					<button type="submit">Log in</button>
+				</form>
 				<p id="join-error"></p>
+				<p><button type="button" class="link" id="join-toggle">Have a saved profile? Log in</button></p>
 				<p>Chop trees, build fences, enclose land.</p>
 			</div>
 		</div>
@@ -529,6 +592,7 @@
 				<span class="chip" title="Iron"><img class="icon" id="icon-iron" alt="Iron" /><b class="num" id="hud-iron">0</b></span>
 				<span class="chip" title="Gold you can spend"><img class="icon coin" id="icon-gold" alt="Gold" /><b class="num" id="hud-gold">0</b><span id="hud-rate"></span></span>
 				<span id="hud-pos" title="Your position (x, y)"></span>
+				<button type="button" id="profile-btn" title="Set a password to log back in from any browser">Save profile</button>
 			</div>
 			<div id="compass">
 				<img class="flag" id="icon-compass" alt="" />
@@ -562,6 +626,23 @@
 				<h2>Wardrobe</h2>
 				<ul id="wardrobe-items" class="items"></ul>
 				<div class="buttons"><button type="button" id="wardrobe-close">Close</button></div>
+			</div>
+		</div>
+		<div id="profile" class="modal" hidden>
+			<div class="panel">
+				<h2 id="profile-title">Save your profile</h2>
+				<p id="profile-intro"></p>
+				<form id="profile-form">
+					<input id="profile-user" type="text" autocomplete="username" hidden />
+					<label id="profile-current-row">Current password <input id="profile-current" type="password" maxlength="128" autocomplete="current-password" /></label>
+					<label>New password <input id="profile-password" type="password" maxlength="128" autocomplete="new-password" /></label>
+					<label>Repeat it <input id="profile-repeat" type="password" maxlength="128" autocomplete="new-password" /></label>
+					<p id="profile-error"></p>
+					<div class="buttons">
+						<button type="button" id="profile-close">Cancel</button>
+						<button type="submit">Save</button>
+					</div>
+				</form>
 			</div>
 		</div>
 		<div id="allies" class="panel" hidden>

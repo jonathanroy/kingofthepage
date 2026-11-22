@@ -5,6 +5,7 @@ import type {
 	LeaderboardEntry,
 	Notice,
 	PlayerRef,
+	ProfileRejectReason,
 } from "@kotp/shared/protocol";
 import {
 	COLLECTIBLES,
@@ -12,6 +13,7 @@ import {
 	FENCE,
 	fenceBuildCost,
 	HANDLE,
+	PROFILE,
 	SLOTS,
 	type Slot,
 	TOOLS,
@@ -82,8 +84,15 @@ const REJECT_TEXT: Partial<Record<ActionRejectReason, string>> = {
 const JOIN_TEXT: Record<JoinRejectReason, string> = {
 	handleInvalid: `Use ${HANDLE.minLength}–${HANDLE.maxLength} letters, digits or underscores.`,
 	handleTaken: "That name is taken. Try another.",
-	badToken: "Your saved session expired. Pick a name to start again.",
+	badToken: "You were signed out. Log in with your password, or pick a name to start again.",
 	alreadyOnline: "You're already playing in another tab.",
+	badLogin: "Wrong name or password.",
+	tooManyAttempts: "Too many tries. Wait a few minutes and try again.",
+};
+
+const PROFILE_TEXT: Record<ProfileRejectReason, string> = {
+	wrongCurrent: "Your current password is wrong.",
+	busy: "Still saving, one moment.",
 };
 
 const FOOD_NAMES: Record<keyof FoodCounts, string> = {
@@ -202,12 +211,103 @@ export class Hud {
 		el("confirm-no").addEventListener("click", () => this.closeConfirm(false));
 	}
 
-	onJoin(handler: (handle: string) => void): void {
+	onJoin(
+		handler: (handle: string) => void,
+		login: (handle: string, password: string) => void,
+	): void {
 		this.form.addEventListener("submit", (e) => {
 			e.preventDefault();
 			const handle = this.input.value.trim();
 			if (handle) handler(handle);
 		});
+		const loginForm = el<HTMLFormElement>("login-form");
+		const loginHandle = el<HTMLInputElement>("login-handle");
+		const loginPassword = el<HTMLInputElement>("login-password");
+		loginForm.addEventListener("submit", (e) => {
+			e.preventDefault();
+			const handle = loginHandle.value.trim();
+			if (handle && loginPassword.value) login(handle, loginPassword.value);
+			loginPassword.value = "";
+		});
+		el("join-toggle").addEventListener("click", () => this.setLoginMode(loginForm.hidden === true));
+	}
+
+	private setLoginMode(on: boolean): void {
+		el("login-form").hidden = !on;
+		this.form.hidden = on;
+		el("join-toggle").textContent = on
+			? "New here? Pick a name instead"
+			: "Have a saved profile? Log in";
+		this.error.textContent = "";
+		(on ? el<HTMLInputElement>("login-handle") : this.input).focus();
+	}
+
+	// ---------- Saved profiles ----------
+
+	private hasPassword = false;
+	private profileHandle = "";
+
+	/** Opens the "Save profile" window and sends the new password once both entries match. */
+	onProfile(save: (password: string, current?: string) => void): void {
+		const button = el("profile-btn");
+		button.addEventListener("click", () => {
+			button.blur();
+			this.openProfile();
+		});
+		el("profile-close").addEventListener("click", () => this.closeModals());
+		el<HTMLFormElement>("profile-form").addEventListener("submit", (e) => {
+			e.preventDefault();
+			const password = el<HTMLInputElement>("profile-password").value;
+			const repeat = el<HTMLInputElement>("profile-repeat").value;
+			const current = el<HTMLInputElement>("profile-current").value;
+			const error = el("profile-error");
+			if (password.length < PROFILE.passwordMinLength) {
+				error.textContent = `Use at least ${PROFILE.passwordMinLength} characters.`;
+			} else if (password !== repeat) {
+				error.textContent = "The two passwords don't match.";
+			} else if (this.hasPassword && !current) {
+				error.textContent = "Enter your current password first.";
+			} else {
+				error.textContent = "Saving…";
+				save(password, this.hasPassword ? current : undefined);
+			}
+		});
+	}
+
+	setProfile(handle: string, hasPassword: boolean): void {
+		this.profileHandle = handle;
+		this.hasPassword = hasPassword;
+		const button = el("profile-btn");
+		button.textContent = hasPassword ? "Profile saved ✓" : "Save profile";
+		button.classList.toggle("saved", hasPassword);
+		button.title = hasPassword
+			? "Change your password"
+			: "Set a password to log back in from any browser";
+	}
+
+	private openProfile(): void {
+		for (const id of ["profile-current", "profile-password", "profile-repeat"]) {
+			el<HTMLInputElement>(id).value = "";
+		}
+		el<HTMLInputElement>("profile-user").value = this.profileHandle;
+		el("profile-error").textContent = "";
+		el("profile-title").textContent = this.hasPassword ? "Change password" : "Save your profile";
+		el("profile-intro").textContent = this.hasPassword
+			? `Log in as ${this.profileHandle} with your new password from now on.`
+			: `Set a password to log back in as ${this.profileHandle} from any browser, even if this one forgets you.`;
+		el("profile-current-row").hidden = !this.hasPassword;
+		this.showModal("profile");
+		el<HTMLInputElement>(this.hasPassword ? "profile-current" : "profile-password").focus();
+	}
+
+	profileSaved(): void {
+		this.setProfile(this.profileHandle, true);
+		this.closeModals();
+		this.toast(`Profile saved. Log in as ${this.profileHandle} with your password any time.`);
+	}
+
+	profileRejected(reason: ProfileRejectReason): void {
+		el("profile-error").textContent = PROFILE_TEXT[reason];
 	}
 
 	onAlliance(actions: AllianceActions): void {
@@ -238,6 +338,10 @@ export class Hud {
 		this.join.hidden = false;
 		if (!this.input.value) this.input.value = suggested;
 		this.error.textContent = reason ? JOIN_TEXT[reason] : "";
+		if (!el("login-form").hidden) {
+			el<HTMLInputElement>("login-password").focus();
+			return;
+		}
 		this.input.focus();
 		this.input.select();
 	}
@@ -312,7 +416,7 @@ export class Hud {
 	}
 
 	get modalOpen(): boolean {
-		return !el("shop").hidden || !el("wardrobe").hidden;
+		return !el("shop").hidden || !el("wardrobe").hidden || !el("profile").hidden;
 	}
 
 	openShop(
@@ -359,9 +463,10 @@ export class Hud {
 		this.showModal("wardrobe");
 	}
 
-	private showModal(id: "shop" | "wardrobe"): void {
+	private showModal(id: "shop" | "wardrobe" | "profile"): void {
 		el("shop").hidden = id !== "shop";
 		el("wardrobe").hidden = id !== "wardrobe";
+		el("profile").hidden = id !== "profile";
 		this.modalHandler?.(true);
 	}
 
@@ -369,6 +474,7 @@ export class Hud {
 		if (!this.modalOpen) return;
 		el("shop").hidden = true;
 		el("wardrobe").hidden = true;
+		el("profile").hidden = true;
 		this.modalHandler?.(false);
 	}
 

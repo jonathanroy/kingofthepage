@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { NETWORK } from "@kotp/shared/rules";
+import { createScryptHasher } from "./auth/passwords";
 import { Game } from "./game/game";
 import { World } from "./game/world";
 import { createStaticHandler } from "./net/staticFiles";
@@ -46,6 +47,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
 		newId: randomUUID,
 		newToken: () => randomBytes(32).toString("base64url"),
 		hashToken: (token) => createHash("sha256").update(token).digest("hex"),
+		passwords: createScryptHasher(),
 	});
 
 	const serveClient = options.clientDir ? createStaticHandler(options.clientDir) : null;

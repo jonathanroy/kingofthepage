@@ -51,6 +51,7 @@ function setup(serverTime = 5_000) {
 		gold: 0,
 		goldPerMinute: 0,
 		serverTime,
+		hasPassword: false,
 	});
 	for (let cy = -2; cy <= 2; cy++) for (let cx = -2; cx <= 2; cx++) world.apply(emptyChunk(cx, cy));
 	return {

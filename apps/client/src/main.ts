@@ -69,6 +69,7 @@ const connection = new Connection({
 			case "joined":
 				tokenStorage.set(msg.token);
 				hud.hideJoin();
+				hud.setProfile(msg.you.handle, msg.hasPassword);
 				if (world.me) hud.update(world.me);
 				void startGame();
 				startTimers();
@@ -80,6 +81,12 @@ const connection = new Connection({
 			case "rejected":
 				hud.rejected(msg.reason);
 				break;
+			case "profileSaved":
+				hud.profileSaved();
+				break;
+			case "profileRejected":
+				hud.profileRejected(msg.reason);
+				break;
 			case "notice":
 				hud.notice(msg.notice);
 				break;
@@ -87,7 +94,7 @@ const connection = new Connection({
 				// Refresh an open shop or wardrobe so Buy/Wear buttons match what's owned now.
 				if (hud.modalOpen && world.shop && !document.getElementById("shop")?.hidden) {
 					hud.openShop(world.shop, world.collection.owned, world.liveGold(), world.serverNow());
-				} else if (hud.modalOpen) {
+				} else if (!document.getElementById("wardrobe")?.hidden) {
 					hud.openWardrobe(world.collection.owned, world.collection.equipped);
 				}
 				break;
@@ -119,7 +126,11 @@ function startTimers(): void {
 	window.setInterval(refresh, LEADERBOARD_REFRESH_MS);
 }
 
-hud.onJoin((handle) => connection.send({ type: "join", handle }));
+hud.onJoin(
+	(handle) => connection.send({ type: "join", handle }),
+	(handle, password) => connection.send({ type: "login", handle, password }),
+);
+hud.onProfile((password, current) => connection.send({ type: "setPassword", password, current }));
 hud.onAlliance({
 	request: (handle) => connection.send({ type: "allyRequest", handle }),
 	accept: (playerId) => connection.send({ type: "allyAccept", playerId }),

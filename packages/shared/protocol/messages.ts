@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PROFILE } from "../rules/config";
 
 export const PROTOCOL_VERSION = 1;
 
@@ -11,6 +12,18 @@ export const DirectionSchema = z.enum(["up", "down", "left", "right"]);
 export const ClientMessageSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("join"), handle: z.string().max(64) }),
 	z.object({ type: z.literal("resume"), token: z.string().min(1).max(128) }),
+	/** Log back in to a saved profile, e.g. from another browser. */
+	z.object({
+		type: z.literal("login"),
+		handle: z.string().max(64),
+		password: z.string().min(1).max(PROFILE.passwordMaxLength),
+	}),
+	/** Save the profile with a password; changing it needs the current one. */
+	z.object({
+		type: z.literal("setPassword"),
+		password: z.string().min(PROFILE.passwordMinLength).max(PROFILE.passwordMaxLength),
+		current: z.string().max(PROFILE.passwordMaxLength).optional(),
+	}),
 	z.object({ type: z.literal("move"), dir: DirectionSchema, seq }),
 	/** Face a direction without moving, e.g. to build on an empty tile. */
 	z.object({ type: z.literal("turn"), dir: DirectionSchema, seq }),
@@ -132,7 +145,16 @@ export type ChunkControl = {
 	readonly cells: readonly number[] | null;
 };
 
-export type JoinRejectReason = "handleInvalid" | "handleTaken" | "badToken" | "alreadyOnline";
+export type JoinRejectReason =
+	| "handleInvalid"
+	| "handleTaken"
+	| "badToken"
+	| "alreadyOnline"
+	/** Unknown handle or wrong password: deliberately the same answer for both. */
+	| "badLogin"
+	| "tooManyAttempts";
+
+export type ProfileRejectReason = "wrongCurrent" | "busy";
 
 export type ActionRejectReason =
 	| "tooSoon"
@@ -182,8 +204,12 @@ export type ServerMessage =
 			readonly gold: number;
 			readonly goldPerMinute: number;
 			readonly serverTime: number;
+			/** Whether this profile is saved with a password. */
+			readonly hasPassword: boolean;
 	  }
 	| { readonly type: "joinRejected"; readonly reason: JoinRejectReason; readonly detail?: string }
+	| { readonly type: "profileSaved" }
+	| { readonly type: "profileRejected"; readonly reason: ProfileRejectReason }
 	| {
 			readonly type: "chunk";
 			readonly cx: number;
