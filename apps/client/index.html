@@ -18,7 +18,7 @@
 				--ally: #2f9c55;
 				--danger: #c43c4a;
 				--field: #ffffff;
-				--pixel: "Pixelify Sans", ui-monospace, Menlo, monospace;
+				--pixel: "Jersey 10", ui-monospace, Menlo, monospace;
 			}
 			html,
 			body {
@@ -28,7 +28,7 @@
 				background: #2b2233;
 				color: var(--ink);
 				font-family: var(--pixel);
-				font-size: 15px;
+				font-size: 24px;
 			}
 			#game {
 				position: fixed;
@@ -70,13 +70,13 @@
 				outline-offset: 2px;
 			}
 			.icon {
-				width: 21px;
-				height: 15px;
+				width: 28px;
+				height: 20px;
 				image-rendering: pixelated;
 				vertical-align: -2px;
 			}
 			.icon.coin {
-				width: 15px;
+				width: 20px;
 			}
 			#join {
 				position: fixed;
@@ -92,13 +92,13 @@
 			}
 			#join h1 {
 				margin: 0 0 12px;
-				font-size: 26px;
+				font-size: 32px;
 				font-weight: 700;
 				color: var(--ink);
 			}
 			#join p {
 				margin: 10px 0 0;
-				font-size: 14px;
+				font-size: 18px;
 				color: var(--muted);
 			}
 			#join-form {
@@ -107,12 +107,68 @@
 			}
 			#join input,
 			#join button {
-				font-size: 17px;
+				font-size: 21px;
 				padding: 8px 12px;
 			}
-			#join-error {
+			#join-error,
+			#profile-error {
 				color: var(--danger);
 				min-height: 1em;
+			}
+			#login-form {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 8px;
+			}
+			#join-form[hidden],
+			#login-form[hidden] {
+				display: none;
+			}
+			#login-form input {
+				flex: 1 1 140px;
+			}
+			#join button.link {
+				background: none;
+				border: none;
+				box-shadow: none;
+				padding: 0;
+				font-size: 18px;
+				color: var(--muted);
+				text-decoration: underline;
+				cursor: pointer;
+			}
+			#profile-btn {
+				font-size: 15px;
+				padding: 2px 8px;
+			}
+			#profile-btn.saved {
+				opacity: 0.7;
+			}
+			#profile-form {
+				display: grid;
+				gap: 8px;
+				margin-top: 8px;
+			}
+			#profile-form label {
+				display: grid;
+				gap: 2px;
+				font-size: 18px;
+			}
+			#profile-form label[hidden] {
+				display: none;
+			}
+			#profile-form input {
+				font-size: 20px;
+				padding: 6px 10px;
+			}
+			#profile-error {
+				margin: 0;
+				font-size: 18px;
+			}
+			#profile-intro {
+				margin: 0;
+				font-size: 18px;
+				color: var(--muted);
 			}
 			#hud {
 				position: fixed;
@@ -128,12 +184,29 @@
 				align-items: center;
 				flex-wrap: wrap;
 			}
-			#hud b {
+			/* Resource chips: big bold digits on a light inset so counts read at a glance. */
+			.chip {
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
+				padding: 2px 10px 2px 6px;
+				background: var(--field);
+				border: 2px solid var(--panel-inner);
+				border-radius: 999px;
+			}
+			.num {
+				font-size: 22px;
 				font-weight: 700;
+				line-height: 1;
 				font-variant-numeric: tabular-nums;
+				letter-spacing: 0.02em;
+				color: var(--ink);
 			}
 			#hud-handle {
 				font-weight: 700;
+			}
+			#hud-pos {
+				font-size: 16px;
 			}
 			#hud-rate {
 				color: var(--gold-ink);
@@ -142,16 +215,141 @@
 				color: var(--muted);
 				font-variant-numeric: tabular-nums;
 			}
+			#hud {
+				max-width: min(720px, calc(100vw - 290px));
+			}
 			#hud .help {
-				font-size: 12px;
+				display: flex;
+				flex-wrap: wrap;
+				gap: 4px 12px;
+				font-size: 15px;
 				color: var(--muted);
+			}
+			kbd {
+				display: inline-block;
+				min-width: 1.4em;
+				padding: 0 4px;
+				margin-right: 2px;
+				font: 700 11px/1.5 ui-monospace, Menlo, Consolas, monospace;
+				text-align: center;
+				color: var(--ink);
+				background: var(--field);
+				border: 1px solid var(--panel-edge);
+				border-bottom-width: 2px;
+				border-radius: 3px;
+			}
+			#compass {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				font-size: 18px;
+			}
+			#compass .flag {
+				width: 20px;
+				height: 20px;
+				image-rendering: pixelated;
+			}
+			#compass .arrow {
+				display: inline-block;
+				font-size: 20px;
+				color: var(--danger);
+				transition: transform 0.2s ease-out;
+			}
+			.modal {
+				position: fixed;
+				inset: 0;
+				display: grid;
+				place-items: center;
+				background: rgba(43, 34, 51, 0.55);
+				z-index: 25;
+				padding: 16px;
+			}
+			.modal[hidden] {
+				display: none;
+			}
+			.modal .panel {
+				width: min(520px, 100%);
+				max-height: calc(100vh - 64px);
+				overflow-y: auto;
+			}
+			.modal h2 {
+				margin: 0 0 4px;
+				font-size: 28px;
+			}
+			.modal .buttons {
+				display: flex;
+				gap: 8px;
+				justify-content: flex-end;
+				margin-top: 10px;
+			}
+			ul.items {
+				list-style: none;
+				margin: 10px 0 0;
+				padding: 0;
+				display: grid;
+				gap: 8px;
+			}
+			ul.items li {
+				display: grid;
+				grid-template-columns: 48px 1fr auto;
+				gap: 10px;
+				align-items: center;
+				padding: 8px;
+				border: 2px solid var(--panel-inner);
+				border-radius: 4px;
+			}
+			ul.items li.muted {
+				display: block;
+			}
+			ul.items .preview {
+				width: 48px;
+				height: 48px;
+				image-rendering: pixelated;
+				background: var(--panel-inner);
+				border-radius: 3px;
+			}
+			ul.items .info {
+				min-width: 0;
+				font-size: 18px;
+			}
+			ul.items .buy {
+				display: grid;
+				gap: 4px;
+				justify-items: end;
+			}
+			ul.items .price {
+				font-variant-numeric: tabular-nums;
+				font-size: 16px;
+			}
+			ul.items button[disabled] {
+				background: var(--panel-inner);
+				cursor: default;
+				box-shadow: none;
+			}
+			.tier {
+				font-size: 15px;
+				padding: 0 6px;
+				border-radius: 3px;
+				background: var(--panel-inner);
+			}
+			.tier-rare .tier {
+				background: #cfe0ff;
+			}
+			.tier-epic .tier {
+				background: #e4d2ff;
+			}
+			.tier-legendary .tier {
+				background: var(--gold);
+			}
+			ul.items li.tier-legendary {
+				border-color: var(--gold);
 			}
 			#status {
 				position: fixed;
 				left: 12px;
 				bottom: 12px;
 				width: 230px;
-				font-size: 13px;
+				font-size: 16px;
 				z-index: 5;
 				display: grid;
 				gap: 5px;
@@ -169,6 +367,12 @@
 			#status .icon {
 				width: 21px;
 				height: 18px;
+			}
+			#board .num {
+				font-size: 18px;
+			}
+			#status .meter .num {
+				font-size: 20px;
 			}
 			.bar {
 				height: 10px;
@@ -214,18 +418,23 @@
 				margin-top: 2px;
 			}
 			#status .pantry .icon {
-				width: 21px;
-				height: 18px;
+				width: 28px;
+				height: 24px;
+			}
+			.food-count {
+				display: inline-flex;
+				align-items: center;
+				gap: 3px;
 			}
 			#status .tool-row {
-				font-size: 13px;
+				font-size: 16px;
 			}
 			#allies {
 				position: fixed;
 				top: 12px;
 				right: 12px;
 				width: 230px;
-				font-size: 14px;
+				font-size: 18px;
 				z-index: 5;
 			}
 			#ally-form {
@@ -255,7 +464,7 @@
 			}
 			#ally-list button {
 				padding: 2px 7px;
-				font-size: 13px;
+				font-size: 16px;
 			}
 			.ally {
 				color: var(--ally);
@@ -294,12 +503,12 @@
 				right: 12px;
 				bottom: 12px;
 				width: 270px;
-				font-size: 13px;
+				font-size: 16px;
 				z-index: 5;
 			}
 			#board summary {
 				cursor: pointer;
-				font-size: 15px;
+				font-size: 19px;
 				font-weight: 700;
 			}
 			#board .cols {
@@ -309,7 +518,7 @@
 			}
 			#board h2 {
 				margin: 8px 0 2px;
-				font-size: 13px;
+				font-size: 16px;
 				color: var(--muted);
 			}
 			#board ol {
@@ -320,6 +529,7 @@
 			#board li {
 				display: flex;
 				justify-content: space-between;
+				align-items: baseline;
 				gap: 4px;
 				font-variant-numeric: tabular-nums;
 			}
@@ -350,7 +560,7 @@
 				left: 50%;
 				bottom: 24px;
 				transform: translateX(-50%);
-				font-size: 15px;
+				font-size: 19px;
 				z-index: 20;
 				max-width: calc(100vw - 64px);
 			}
@@ -365,31 +575,75 @@
 					<input id="join-handle" maxlength="16" autocomplete="off" spellcheck="false" aria-label="Your name" />
 					<button type="submit">Play</button>
 				</form>
+				<form id="login-form" hidden>
+					<input id="login-handle" maxlength="16" autocomplete="username" spellcheck="false" placeholder="Name" aria-label="Your name" />
+					<input id="login-password" type="password" maxlength="128" autocomplete="current-password" placeholder="Password" aria-label="Password" />
+					<button type="submit">Log in</button>
+				</form>
 				<p id="join-error"></p>
+				<p><button type="button" class="link" id="join-toggle">Have a saved profile? Log in</button></p>
 				<p>Chop trees, build fences, enclose land.</p>
 			</div>
 		</div>
 		<div id="hud" class="panel" hidden>
 			<div class="stats">
 				<span id="hud-handle"></span>
-				<span><img class="icon" id="icon-wood" alt="Wood" /> <b id="hud-wood">0</b></span>
-				<span><img class="icon" id="icon-iron" alt="Iron" /> <b id="hud-iron">0</b></span>
-				<span><img class="icon coin" id="icon-gold" alt="Gold" /> <b id="hud-gold">0</b><span id="hud-rate"></span></span>
-				<span id="hud-pos"></span>
+				<span class="chip" title="Wood"><img class="icon" id="icon-wood" alt="Wood" /><b class="num" id="hud-wood">0</b></span>
+				<span class="chip" title="Iron"><img class="icon" id="icon-iron" alt="Iron" /><b class="num" id="hud-iron">0</b></span>
+				<span class="chip" title="Gold you can spend"><img class="icon coin" id="icon-gold" alt="Gold" /><b class="num" id="hud-gold">0</b><span id="hud-rate"></span></span>
+				<span id="hud-pos" title="Your position (x, y)"></span>
+				<button type="button" id="profile-btn" title="Set a password to log back in from any browser">Save profile</button>
+			</div>
+			<div id="compass">
+				<img class="flag" id="icon-compass" alt="" />
+				<span id="compass-arrow" class="arrow" aria-hidden="true">➜</span>
+				<span id="compass-label">No base yet</span>
 			</div>
 			<div class="help" id="help"></div>
 		</div>
 		<div id="status" class="panel" hidden>
-			<div class="meter"><img class="icon" id="icon-health" alt="Health" /><div class="bar"><span id="bar-health" class="fill health"></span></div><b id="num-health">100</b></div>
-			<div class="meter"><img class="icon" id="icon-food" alt="Food" /><div class="bar"><span id="bar-food" class="fill food"></span></div><b id="num-food">100</b></div>
-			<div class="meter"><img class="icon" id="icon-water" alt="Water" /><div class="bar"><span id="bar-water" class="fill water"></span></div><b id="num-water">100</b></div>
+			<div class="meter"><img class="icon" id="icon-health" alt="Health" /><div class="bar"><span id="bar-health" class="fill health"></span></div><b class="num" id="num-health">100</b></div>
+			<div class="meter"><img class="icon" id="icon-food" alt="Food" /><div class="bar"><span id="bar-food" class="fill food"></span></div><b class="num" id="num-food">100</b></div>
+			<div class="meter"><img class="icon" id="icon-water" alt="Water" /><div class="bar"><span id="bar-water" class="fill water"></span></div><b class="num" id="num-water">100</b></div>
 			<div class="pantry">
-				<span><img class="icon" id="icon-apple" alt="Apples" /> <b id="food-apple">0</b></span>
-				<span><img class="icon" id="icon-berries" alt="Berries" /> <b id="food-berries">0</b></span>
-				<span><img class="icon" id="icon-potato" alt="Potatoes" /> <b id="food-potato">0</b></span>
-				<span><img class="icon" id="icon-meat" alt="Meat" /> <b id="food-meat">0</b></span>
+				<span class="food-count"><img class="icon" id="icon-apple" alt="Apples" /> <b class="num" id="food-apple">0</b></span>
+				<span class="food-count"><img class="icon" id="icon-berries" alt="Berries" /> <b class="num" id="food-berries">0</b></span>
+				<span class="food-count"><img class="icon" id="icon-potato" alt="Potatoes" /> <b class="num" id="food-potato">0</b></span>
+				<span class="food-count"><img class="icon" id="icon-meat" alt="Meat" /> <b class="num" id="food-meat">0</b></span>
 			</div>
 			<div class="tool-row"><b id="tool">Axe</b> <span id="tool-hint" class="muted"></span></div>
+		</div>
+		<div id="shop" class="modal" hidden>
+			<div class="panel">
+				<h2>✦ The Wandering Shop ✦</h2>
+				<p id="shop-meta" class="muted"></p>
+				<ul id="shop-items" class="items"></ul>
+				<div class="buttons"><button type="button" id="shop-close">Leave</button></div>
+			</div>
+		</div>
+		<div id="wardrobe" class="modal" hidden>
+			<div class="panel">
+				<h2>Wardrobe</h2>
+				<ul id="wardrobe-items" class="items"></ul>
+				<div class="buttons"><button type="button" id="wardrobe-close">Close</button></div>
+			</div>
+		</div>
+		<div id="profile" class="modal" hidden>
+			<div class="panel">
+				<h2 id="profile-title">Save your profile</h2>
+				<p id="profile-intro"></p>
+				<form id="profile-form">
+					<input id="profile-user" type="text" autocomplete="username" hidden />
+					<label id="profile-current-row">Current password <input id="profile-current" type="password" maxlength="128" autocomplete="current-password" /></label>
+					<label>New password <input id="profile-password" type="password" maxlength="128" autocomplete="new-password" /></label>
+					<label>Repeat it <input id="profile-repeat" type="password" maxlength="128" autocomplete="new-password" /></label>
+					<p id="profile-error"></p>
+					<div class="buttons">
+						<button type="button" id="profile-close">Cancel</button>
+						<button type="submit">Save</button>
+					</div>
+				</form>
+			</div>
 		</div>
 		<div id="allies" class="panel" hidden>
 			<form id="ally-form">

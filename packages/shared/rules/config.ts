@@ -69,6 +69,8 @@ export const ENCLOSURE = {
 /** Movement and action pacing. Walking speed is what bounds exploration (§1). */
 export const PACE = {
 	moveIntervalMs: 150,
+	/** §1 Swimming: one tile of water takes this long, so lakes are a detour, not a highway. */
+	swimMoveIntervalMs: 300,
 	actionIntervalMs: 250,
 } as const;
 
@@ -77,6 +79,15 @@ export const HANDLE = {
 	minLength: 3,
 	maxLength: 16,
 	pattern: /^[A-Za-z0-9_]+$/,
+} as const;
+
+/** Saved profiles: log back in with handle and password from any browser. */
+export const PROFILE = {
+	passwordMinLength: 8,
+	passwordMaxLength: 128,
+	/** Failed logins for one handle before it is locked for a while, to slow down guessing. */
+	maxFailedLogins: 5,
+	lockoutMs: 5 * 60_000,
 } as const;
 
 export const SPAWN = {
@@ -158,9 +169,10 @@ export const FOOD = {
 
 /** §8 Foraging: where plants grow (chance per eligible tile), how much a harvest gives, regrowth. */
 export const FORAGE = {
-	apple: { chance: 0.12, yield: 3, regrowMs: 10 * 60_000 },
-	berry: { chance: 0.012, yield: 4, regrowMs: 6 * 60_000 },
-	potato: { chance: 0.006, yield: 2, regrowMs: 20 * 60_000 },
+	// Scarce on purpose: finding food should take some searching, not a few steps.
+	apple: { chance: 0.03, yield: 2, regrowMs: 30 * 60_000 },
+	berry: { chance: 0.005, yield: 3, regrowMs: 20 * 60_000 },
+	potato: { chance: 0.003, yield: 2, regrowMs: 45 * 60_000 },
 } as const;
 
 /** §9 Tools. */
@@ -184,13 +196,30 @@ export const CREATURES = {
 	},
 	/** Bears claw through fences up to this level; higher walls hold them back. */
 	bearMaxFenceLevel: 3,
-	animalsPerPlayer: 4,
+	animalsPerPlayer: 2,
 	animalSpawnMin: 10,
 	animalSpawnMax: 18,
 	/** Animals farther than this from every player are removed. */
 	despawnRange: 40,
-	/** Chance per online player per minute that a zombie bear comes. */
-	bearChancePerMinute: 1 / 40,
+	/**
+	 * Online play time before a zombie bear comes, drawn at random in this range for each
+	 * player. It counts down only while they're online and is saved, so restarts and
+	 * logins don't reset it.
+	 */
+	bearDelayMinMs: 15 * 60_000,
+	bearDelayMaxMs: 35 * 60_000,
 	bearSpawnMin: 15,
 	bearSpawnMax: 20,
+} as const;
+
+/** §10 The magic shop. */
+export const SHOP = {
+	/** The shop moves at every multiple of this (midnight UTC). */
+	dayMs: 24 * 60 * 60_000,
+	/** Spots are picked within this many tiles of the world's center. */
+	radius: 380,
+	placementAttempts: 400,
+	/** Prices are measured in days of one small mine. */
+	goldPerDay: 1440,
+	tierDays: { common: 15, rare: 30, epic: 45, legendary: 90 },
 } as const;

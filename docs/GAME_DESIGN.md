@@ -16,12 +16,14 @@ Numbers marked _(tunable)_ are starting values to adjust during playtesting.
 - **Landscape:** countryside with grass, forests, lakes and hills.
 - **Generation:** procedural, created as players explore. The world uses a single seed, so the same coordinates always produce the same terrain. The world is split into chunks (e.g. 32×32 tiles).
 - **Size:** infinite in all directions. Walking speed is the only practical limit on how far players go.
-- **Movement:** 4-directional, one tile at a time. Water (lakes), hills and trees can't be walked on; players walk on grass and on the stumps of chopped trees.
+- **Movement:** 4-directional, one tile at a time. Hills and trees can't be walked on; players walk on grass and on the stumps of chopped trees.
+- **Swimming:** players can swim across water (lakes) at half walking speed _(tunable)_. Nothing can be built on water, nobody spawns in it, and creatures can't swim, so lakes still stop animals and zombie bears.
 - **Presence:** all online players are visible to each other in real time. Offline characters are not shown.
 
 ### Players and spawning
 
-- A player joins by choosing a **handle**, which must be unique. A random fun name is suggested by default so a new player can start right away. No password or email.
+- A player joins by choosing a **handle**, which must be unique. A random fun name is suggested by default so a new player can start right away. No email, and no password needed to start: the browser remembers the player.
+- **Saved profile (optional):** a player can set a password at any time, then log back in with handle and password from any browser. Logging in signs out other browsers. Changing the password needs the current one. Repeated wrong passwords lock that handle's logins for a few minutes _(tunable)_. There's no password reset, since there's no email.
 - New players spawn on a random **unenclosed** tile **near an existing fence**. If no fence exists in the world yet, they spawn anywhere.
 - Returning players reappear **where they left**, even if that spot has since been enclosed (they are then trapped, see §5 Access).
 
@@ -51,6 +53,8 @@ Numbers marked _(tunable)_ are starting values to adjust during playtesting.
 
 - Fences cost wood and are placed on empty ground: grass or the stump of a chopped tree, never on a tile where a player is standing.
 - Fences can be built anywhere, **including inside someone else's land** (see §5 Nesting).
+- Fences go on a tile **next to the player**: the one they face, or, while walking with the build key held, each tile they step off. That lays lines and corners in one walk.
+- Fences touching only at a corner are drawn joined, since they close an area just like a solid corner (§5).
 
 ### Upgrade levels
 
@@ -127,6 +131,7 @@ _(All values tunable.)_
 
 - Only the owner (and allies through gates) can enter claimed land.
 - Players inside an area when it gets closed are **not** teleported out. They are trapped inside.
+- Water still counts as a wall for enclosures even though players can swim. A swimmer can't climb onto someone else's claimed shore (allies can). A player trapped in land that borders water can swim out.
 
 ### Breach
 
@@ -158,7 +163,7 @@ _(All values tunable.)_
 
 ### Gold usage
 
-For now, gold is only for **bragging rights** on the leaderboard. Future ideas: trading, rewards, cosmetics.
+Gold buys **collectibles at the magic shop** (§10). Spending never lowers the Gold leaderboard, which ranks total gold earned. Each player has a spendable **balance**: gold earned minus gold spent.
 
 ---
 
@@ -220,7 +225,7 @@ _(All values tunable.)_
 
 ### Zombie bears
 
-- A **rare event** _(tunable, about once per 40 minutes of play)_: a zombie bear appears some distance from an online player and walks toward them.
+- A **rare event**: a zombie bear appears some distance from an online player and walks toward them. Each player has a hidden countdown of online play time, drawn at random _(tunable, 15–35 minutes)_. It pauses while they're offline and is saved, so server restarts and logins don't reset it. When it runs out a bear comes and a new countdown is drawn.
 - Bears **claw through fences and gates of levels 1–3**. Walls of **level 4 and up hold them back** completely, so iron-reinforced walls are the defense.
 - Next to a player, a bear bites for heavy damage every second or so.
 - A bear takes **12 spear hits** to kill _(tunable)_ and gives up and leaves after a few minutes.
@@ -228,7 +233,32 @@ _(All values tunable.)_
 
 ---
 
-## 10. Technical notes
+## 10. Compass and the magic shop
+
+### Flag compass
+
+- Every player has a **flag compass** in the HUD. It points to their nearest **base** (one of their enclosures) and shows the distance in tiles.
+- With several bases, a key cycles through them. With none, the compass says so.
+
+### The magic shop
+
+- A **wandering magic shop** appears somewhere in the world and **moves every 24 hours** (at midnight UTC).
+- Its spot is picked from the world seed and the date, on open ground within **380 tiles** of the world's center _(tunable)_, never inside claimed land. There are **no hints**: it's an easter egg, found only by exploring.
+- It's a solid tile; face it and use **interact** to browse.
+- Each day it offers **four collectibles**, one per rarity tier, rotating through the catalog.
+- Collectibles are **purely cosmetic and visible to everyone**: hats, capes, pets that follow their owner, auras, a glowing name and a royal wall banner. Each can be bought once per player and is kept forever (never lost on death). Players choose what to wear.
+- Prices are deliberately steep, measured in days of one small mine (1,440 gold a day) _(tunable)_:
+
+| Tier | Price | About |
+|---|---|---|
+| Common | 21,600 gold | 15 days |
+| Rare | 43,200 gold | 30 days |
+| Epic | 64,800 gold | 45 days |
+| Legendary | 129,600 gold | 90 days |
+
+---
+
+## 11. Technical notes
 
 ### Terrain and storage
 
@@ -259,7 +289,7 @@ _(All values tunable.)_
 
 ---
 
-## 11. MVP scope
+## 12. MVP scope
 
 **Included:** movement, real-time player visibility, procedural terrain, chopping trees, wood inventory, building fences, enclosure detection, colored ownership overlay, breach detection.
 
@@ -269,6 +299,6 @@ _(All values tunable.)_
 
 ---
 
-## 12. Open questions
+## 13. Open questions
 
 - None right now.

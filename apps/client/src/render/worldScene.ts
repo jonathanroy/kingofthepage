@@ -1,5 +1,5 @@
-import type { ClientMessage } from "@kotp/shared/protocol";
-import { FENCE_LEVELS, type Fence, PACE } from "@kotp/shared/rules";
+import type { ClientMessage, LookInfo } from "@kotp/shared/protocol";
+import { FENCE_LEVELS, type Fence, isSwimmable, moveIntervalFor, PACE } from "@kotp/shared/rules";
 import {
 	CHUNK_SIZE,
 	chunkKey,
@@ -11,6 +11,7 @@ import {
 } from "@kotp/shared/world";
 import Phaser from "phaser";
 import { playerFrame } from "../art/characters";
+import { HAT_OVERHANG } from "../art/cosmetics";
 import { groundKey } from "../art/ground";
 import { shade } from "../art/pixels";
 import { joinsMask, WALL_OVERHANG, type WallJoins, wantsPennant } from "../art/walls";
@@ -32,6 +33,11 @@ export type SceneDeps = {
 	readonly onMeChanged: () => void;
 	/** Meters, food or tools changed (§8, §9). */
 	readonly onStatusChanged: () => void;
+	/** §10: the shop window, the wardrobe, the compass. */
+	readonly openShop: () => void;
+	readonly openWardrobe: () => void;
+	readonly cycleBase: () => void;
+	readonly onCompassChanged: () => void;
 	/** Shows the §4 warning before chopping an ally's fence. */
 	readonly confirm: (text: string) => Promise<boolean>;
 };
@@ -44,8 +50,12 @@ type Action =
 	| "interact"
 	| "eat"
 	| "craftSpear"
-	| "switchTool";
-type Input = Direction | Action;
+	| "switchTool"
+	| "wardrobe"
+	| "cycleBase";
+/** A fence laid on the tile just left while walking with F held. */
+type TrailBuild = `trail-${Direction}`;
+type Input = Direction | Action | TrailBuild;
 const ACTIONS: readonly Action[] = [
 	"chop",
 	"build",
@@ -55,6 +65,8 @@ const ACTIONS: readonly Action[] = [
 	"eat",
 	"craftSpear",
 	"switchTool",
+	"wardrobe",
+	"cycleBase",
 ];
 
 type CreatureView = {
@@ -88,6 +100,14 @@ type PlayerView = {
 	readonly container: Phaser.GameObjects.Container;
 	readonly body: Phaser.GameObjects.Image;
 	readonly label: Phaser.GameObjects.Text;
+	/** §10 collectibles worn. */
+	readonly cape: Phaser.GameObjects.Image;
+	readonly hat: Phaser.GameObjects.Image;
+	/** §1 Swimming: shown around the chest while the player is in water. */
+	readonly ripple: Phaser.GameObjects.Image;
+	swimming: boolean;
+	pet: Phaser.GameObjects.Image | null;
+	look: LookInfo;
 	dir: Direction;
 	moving: boolean;
 };
@@ -99,7 +119,25 @@ const TURN_PAUSE_MS = 120;
 const DIRECTIONS = ["up", "down", "left", "right"] as const;
 const GLINT_EVERY_MS = 220;
 const MAX_GLINTS = 40;
-const LABEL_FONT = '"Pixelify Sans", ui-monospace, monospace';
+const LABEL_FONT = '"Jersey 10", ui-monospace, monospace';
+/** Swimmers sink this many pixels and show only the top rows of their sprite (head and shoulders). */
+const SWIM_SINK = 4;
+const SWIM_SHOWN = 10;
+
+function around8(x: number, y: number): { x: number; y: number }[] {
+	const out: { x: number; y: number }[] = [];
+	for (let dy = -1; dy <= 1; dy++) {
+		for (let dx = -1; dx <= 1; dx++) if (dx || dy) out.push({ x: x + dx, y: y + dy });
+	}
+	return out;
+}
+
+const OPPOSITE: Record<Direction, Direction> = {
+	up: "down",
+	down: "up",
+	left: "right",
+	right: "left",
+};
 
 function parseKey(key: string): [number, number] {
 	return key.split(",").map(Number) as [number, number];
@@ -125,7 +163,14 @@ export class WorldScene extends Phaser.Scene {
 		eat: Phaser.Input.Keyboard.Key;
 		craftSpear: Phaser.Input.Keyboard.Key;
 		switchTool: Phaser.Input.Keyboard.Key;
+		wardrobe: Phaser.Input.Keyboard.Key;
+		cycleBase: Phaser.Input.Keyboard.Key;
 	};
+	private shopView: { tent: Phaser.GameObjects.Image; sparkle: Phaser.GameObjects.Sprite } | null =
+		null;
+	private lastAuraAt = 0;
+	/** Whether the player walked while holding F, which makes it a trail rather than a tap. */
+	private trailWalked = false;
 	private readonly creatureViews = new Map<string, CreatureView>();
 	private lastPantry: Record<string, number> | null = null;
 	private nextMoveAt = 0;
@@ -167,6 +212,8 @@ export class WorldScene extends Phaser.Scene {
 			eat: kb.addKey(K.X),
 			craftSpear: kb.addKey(K.C),
 			switchTool: kb.addKey(K.Q),
+			wardrobe: kb.addKey(K.V),
+			cycleBase: kb.addKey(K.B),
 		};
 		// Key "down" events, not per-frame polling: Phaser clears a key's just-pressed
 		// flag on release, so a tap shorter than a frame would otherwise be lost.
@@ -177,11 +224,20 @@ export class WorldScene extends Phaser.Scene {
 			for (const key of this.keys[dir]) key.on("down", () => queue(dir));
 		}
 		for (const action of ACTIONS) {
+			if (action === "build") continue;
 			this.keys[action].on("down", () => {
 				queue(action);
 				if (action === "chop") this.nextHeldChopAt = this.time.now + PACE.actionIntervalMs;
 			});
 		}
+		// F: a tap builds in front; holding it while walking lays a fence on each tile you leave,
+		// which makes lines and corners easy. The tap is decided on release.
+		this.keys.build.on("down", () => {
+			this.trailWalked = false;
+		});
+		this.keys.build.on("up", () => {
+			if (!this.trailWalked) queue("build");
+		});
 		this.applyZoom();
 		this.scale.on("resize", () => this.applyZoom());
 	}
@@ -217,13 +273,24 @@ export class WorldScene extends Phaser.Scene {
 		while (this.inputQueue.length > 0) {
 			const next = this.inputQueue[0];
 			if (this.waitingForConfirm) return;
-			if (next === "chop") {
+			if (next?.startsWith("trail-")) {
+				const dir = next.slice("trail-".length) as Direction;
+				this.deps.send({ type: "build", dir, seq: this.deps.nextSeq() });
+			} else if (next === "chop") {
 				if (!this.sendChop()) return;
+			} else if (next === "wardrobe") {
+				this.deps.openWardrobe();
+			} else if (next === "cycleBase") {
+				this.deps.cycleBase();
+				this.deps.onCompassChanged();
+			} else if (next === "interact" && this.facingShop()) {
+				// §10: interacting with the shop opens its window; buying is a separate intent.
+				this.deps.openShop();
 			} else if (next === "switchTool") {
 				const tool = this.deps.world.status?.tool === "spear" ? "axe" : "spear";
 				this.deps.send({ type: "selectTool", tool, seq: this.deps.nextSeq() });
 			} else if (next !== undefined && (ACTIONS as readonly string[]).includes(next)) {
-				const type = next as Exclude<Action, "chop" | "switchTool">;
+				const type = next as Exclude<Action, "chop" | "switchTool" | "wardrobe" | "cycleBase">;
 				this.deps.send({ type, seq: this.deps.nextSeq() });
 			} else if (next !== undefined) {
 				const dir = next as Direction;
@@ -293,10 +360,18 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	private sendMove(dir: Direction, time: number): void {
+		const me = this.deps.world.me;
+		const from = me ? { x: me.x, y: me.y } : null;
 		const seq = this.deps.nextSeq();
 		this.deps.world.predictMove(dir, seq);
 		this.deps.send({ type: "move", dir, seq });
-		this.nextMoveAt = time + PACE.moveIntervalMs;
+		this.nextMoveAt = time + (me ? moveIntervalFor(this.deps.world.tileAt(me.x, me.y)) : 0);
+		const moved = from && me && (me.x !== from.x || me.y !== from.y);
+		if (moved && this.keys.build.isDown) {
+			// Lay a fence on the tile just left; the server builds it after the move.
+			this.trailWalked = true;
+			this.inputQueue.push(`trail-${OPPOSITE[dir]}`);
+		}
 	}
 
 	private heldDirection(): Direction | null {
@@ -319,6 +394,12 @@ export class WorldScene extends Phaser.Scene {
 		for (const id of changes.creaturesRemoved) this.destroyCreature(id);
 		for (const id of changes.creatures) this.updateCreature(id);
 		if (changes.statusChanged) this.onStatus();
+		if (changes.shopChanged) this.updateShop();
+		if (changes.royalChanged) this.refreshPennants();
+		if (changes.collectionChanged && this.me && this.deps.world.me) {
+			this.applyLook(this.me, this.deps.world.collection.equipped);
+		}
+		if (changes.basesChanged || changes.meChanged) this.deps.onCompassChanged();
 	}
 
 	// ---------- Ground ----------
@@ -367,7 +448,7 @@ export class WorldScene extends Phaser.Scene {
 			this.updateFence(tk);
 			// Walls in the neighboring chunk may now join across the chunk edge.
 			const [fx, fy] = parseKey(tk);
-			for (const n of neighbors4(fx, fy)) {
+			for (const n of around8(fx, fy)) {
 				if (this.viewOf(n.x, n.y) !== view && world.fenceAt(n.x, n.y))
 					this.updateFence(`${n.x},${n.y}`);
 			}
@@ -454,8 +535,8 @@ export class WorldScene extends Phaser.Scene {
 			if (before?.[0] === "o") this.burstChips(x, y, 3);
 		}
 		this.updateFence(key);
-		// Neighbors may need to join or unjoin this tile's wall.
-		for (const n of neighbors4(x, y)) {
+		// Neighbors, diagonal ones included, may need to join or unjoin this tile's wall.
+		for (const n of around8(x, y)) {
 			const nk = `${n.x},${n.y}`;
 			if (this.viewOf(n.x, n.y)?.fences.has(nk) || world.fenceAt(n.x, n.y)) this.updateFence(nk);
 		}
@@ -466,7 +547,21 @@ export class WorldScene extends Phaser.Scene {
 	private joinsAt(x: number, y: number, ownerId: string): WallJoins {
 		const same = (dx: number, dy: number) =>
 			this.deps.world.fenceAt(x + dx, y + dy)?.ownerId === ownerId;
-		return { n: same(0, -1), s: same(0, 1), w: same(-1, 0), e: same(1, 0) };
+		const n = same(0, -1);
+		const s = same(0, 1);
+		const w = same(-1, 0);
+		const e = same(1, 0);
+		// A corner touch only needs drawing when no straight neighbor already turns that corner.
+		return {
+			n,
+			s,
+			w,
+			e,
+			ne: same(1, -1) && !n && !e,
+			nw: same(-1, -1) && !n && !w,
+			se: same(1, 1) && !s && !e,
+			sw: same(-1, 1) && !s && !w,
+		};
 	}
 
 	private updateFence(key: string): void {
@@ -534,7 +629,15 @@ export class WorldScene extends Phaser.Scene {
 				fv.pennant.play({ key: "pennant", startFrame: Math.floor(Math.random() * 2) });
 		}
 		fv.pennant.setPosition(px, y * TILE + postTop);
-		fv.pennant.setTint(ownerColor(fence.ownerId, this.deps.world.me?.id));
+		// §10: owners with the royal banner fly gold crowned pennants instead of their color.
+		const royal = this.deps.world.royal.has(fence.ownerId);
+		const key = royal ? "pennant-royal" : "pennant";
+		if (fv.pennant.texture.key !== key) {
+			fv.pennant.setTexture(key, 0);
+			if (!this.calm) fv.pennant.play(key);
+		}
+		if (royal) fv.pennant.clearTint();
+		else fv.pennant.setTint(ownerColor(fence.ownerId, this.deps.world.me?.id));
 	}
 
 	private destroyFenceView(fv: FenceView): void {
@@ -611,16 +714,35 @@ export class WorldScene extends Phaser.Scene {
 		const label = this.add
 			.text(TILE / 2, -2, this.deps.world.isAlly(id) ? `♥ ${handle}` : handle, {
 				fontFamily: LABEL_FONT,
-				fontSize: "8px",
+				fontSize: "10px",
 				color: this.labelColor(id),
 				stroke: "#2b2233",
 				strokeThickness: 2,
 				resolution: 4,
 			})
 			.setOrigin(0.5, 1);
-		const container = this.add.container(x * TILE, y * TILE, [body, label]);
+		const cape = this.add.image(0, 0, "chip").setOrigin(0).setVisible(false);
+		const hat = this.add.image(0, -HAT_OVERHANG, "chip").setOrigin(0).setVisible(false);
+		const ripple = this.add
+			.image(0, SWIM_SINK + SWIM_SHOWN - 2, "ripple")
+			.setOrigin(0)
+			.setVisible(false);
+		const container = this.add.container(x * TILE, y * TILE, [cape, body, ripple, hat, label]);
 		container.setDepth(DEPTH.player);
-		return { container, body, label, dir, moving: false };
+		const view: PlayerView = {
+			container,
+			body,
+			label,
+			cape,
+			hat,
+			ripple,
+			swimming: false,
+			pet: null,
+			look: {},
+			dir,
+			moving: false,
+		};
+		return view;
 	}
 
 	/** Gold for you, green for allies, white for everyone else: allies must stand out (CLAUDE.md). */
@@ -652,12 +774,24 @@ export class WorldScene extends Phaser.Scene {
 			return;
 		}
 		view.moving = true;
-		this.puffDust(fromX, fromY);
+		const duration = moveIntervalFor(this.deps.world.tileAt(x, y));
+		if (!view.swimming) this.puffDust(fromX, fromY);
+		if (view.pet) {
+			// The pet trots one step behind, into the tile its owner just left.
+			view.pet.setFlipX(x * TILE > fromX);
+			this.tweens.killTweensOf(view.pet);
+			this.tweens.add({
+				targets: view.pet,
+				x: fromX,
+				y: fromY,
+				duration: duration + 60,
+			});
+		}
 		this.tweens.add({
 			targets: view.container,
 			x: x * TILE,
 			y: y * TILE,
-			duration: PACE.moveIntervalMs,
+			duration,
 			onComplete: () => {
 				view.moving = false;
 			},
@@ -670,6 +804,15 @@ export class WorldScene extends Phaser.Scene {
 		const all = this.me ? [...this.playerViews.values(), this.me] : [...this.playerViews.values()];
 		for (const view of all) {
 			view.body.setFrame(playerFrame(view.dir, view.moving ? step : 0));
+		}
+		for (const view of all) {
+			this.updateSwimming(view, time);
+			this.orderCape(view);
+			if (view.pet) view.pet.setFrame(view.moving ? Math.floor(time / 150) % 2 : 0);
+		}
+		if (!this.calm && time - this.lastAuraAt > 350) {
+			this.lastAuraAt = time;
+			for (const view of all) if (view.look.aura) this.auraStar(view);
 		}
 		const creatureStep = Math.floor(time / 180) % 2;
 		for (const v of this.creatureViews.values()) v.sprite.setFrame(v.moving ? creatureStep : 0);
@@ -684,12 +827,98 @@ export class WorldScene extends Phaser.Scene {
 			this.playerViews.set(id, view);
 		}
 		view.dir = p.facing;
+		this.applyLook(view, p.look);
 		this.glide(view, p.x, p.y);
 	}
 
 	private destroyPlayer(id: string): void {
-		this.playerViews.get(id)?.container.destroy();
+		const view = this.playerViews.get(id);
+		view?.pet?.destroy();
+		view?.container.destroy();
 		this.playerViews.delete(id);
+	}
+
+	// ---------- Collectibles (§10) ----------
+
+	/** Hat, cape, pet and glowing name; auras are drawn each frame in `animatePlayers`. */
+	private applyLook(view: PlayerView, look: LookInfo): void {
+		view.look = look;
+		view.hat.setVisible(!!look.hat);
+		if (look.hat) view.hat.setTexture(`hat-${look.hat}`);
+		view.cape.setVisible(!!look.cape);
+		if (look.cape) view.cape.setTexture(`cape-${look.cape}`);
+		if (look.pet && !view.pet) {
+			view.pet = this.add
+				.image(view.container.x - TILE, view.container.y, `pet-${look.pet}`, 0)
+				.setOrigin(0)
+				.setDepth(DEPTH.player - 0.2);
+		}
+		if (view.pet && !look.pet) {
+			view.pet.destroy();
+			view.pet = null;
+		}
+		if (view.pet && look.pet) view.pet.setTexture(`pet-${look.pet}`, 0);
+		const glowing = look.name === "glowing-name";
+		view.label.setShadow(0, 0, "#ffd23f", glowing ? 4 : 0, true, true);
+		if (glowing) view.label.setColor("#fff3b0");
+		this.orderCape(view);
+	}
+
+	/** Seen from behind, the cape covers the back; otherwise it hangs behind the body. */
+	/** §1 Swimming: switches to head-and-shoulders with a ripple once the player is mostly in water. */
+	private updateSwimming(view: PlayerView, time: number): void {
+		const tx = Math.round(view.container.x / TILE);
+		const ty = Math.round(view.container.y / TILE);
+		const swimming = isSwimmable(this.deps.world.tileAt(tx, ty));
+		if (swimming) view.ripple.setFlipX(Math.floor(time / 400) % 2 === 1);
+		if (swimming === view.swimming) return;
+		view.swimming = swimming;
+		const sink = swimming ? SWIM_SINK : 0;
+		if (swimming) view.body.setCrop(0, 0, TILE, SWIM_SHOWN);
+		else view.body.setCrop();
+		view.body.setY(sink);
+		view.hat.setY(-HAT_OVERHANG + sink);
+		view.ripple.setVisible(swimming);
+		view.cape.setAlpha(swimming ? 0 : 1);
+	}
+
+	private orderCape(view: PlayerView): void {
+		if (view.dir === "up") view.container.moveAbove(view.cape, view.body);
+		else view.container.moveBelow(view.cape, view.body);
+		view.hat.setFlipX(view.dir === "right");
+	}
+
+	private facingShop(): boolean {
+		const { me, shop } = this.deps.world;
+		if (!me || !shop) return false;
+		const at = stepToward(me.x, me.y, me.facing);
+		return at.x === shop.x && at.y === shop.y;
+	}
+
+	private updateShop(): void {
+		const shop = this.deps.world.shop;
+		this.shopView?.tent.destroy();
+		this.shopView?.sparkle.destroy();
+		this.shopView = null;
+		if (!shop) return;
+		const tent = this.add
+			.image(shop.x * TILE, shop.y * TILE, "shop-tent")
+			.setOrigin(0)
+			.setDepth(DEPTH.fence);
+		const sparkle = this.add
+			.sprite(shop.x * TILE + 7, shop.y * TILE + 2, "sparkle")
+			.setDepth(DEPTH.sparkle + 2);
+		if (!this.calm) sparkle.play("sparkle");
+		this.shopView = { tent, sparkle };
+	}
+
+	private refreshPennants(): void {
+		for (const view of this.chunkViews.values()) {
+			for (const [key, fv] of view.fences) {
+				const [x, y] = parseKey(key);
+				if (fv.pennant) this.setPennant(fv, x, y, fv.fence, true);
+			}
+		}
 	}
 
 	private updateMe(): void {
@@ -873,6 +1102,25 @@ export class WorldScene extends Phaser.Scene {
 		});
 	}
 
+	/** §10 Starlight Aura: a star drifts up around the wearer. */
+	private auraStar(view: PlayerView): void {
+		const star = this.add
+			.sprite(
+				view.container.x + 2 + Math.random() * 12,
+				view.container.y + 4 + Math.random() * 10,
+				"sparkle",
+			)
+			.setDepth(DEPTH.fx)
+			.play("sparkle");
+		this.tweens.add({
+			targets: star,
+			y: star.y - 8,
+			alpha: 0,
+			duration: 700,
+			onComplete: () => star.destroy(),
+		});
+	}
+
 	private puffDust(x: number, y: number): void {
 		if (this.calm) return;
 		const dust = this.add
@@ -899,7 +1147,7 @@ export class WorldScene extends Phaser.Scene {
 		const label = this.add
 			.text(x + 9, y, text, {
 				fontFamily: LABEL_FONT,
-				fontSize: "8px",
+				fontSize: "10px",
 				color: icon === "coin" ? "#fff3b0" : "#ffffff",
 				stroke: "#2b2233",
 				strokeThickness: 2,

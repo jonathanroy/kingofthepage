@@ -1,4 +1,4 @@
-import type { Pantry, Tool } from "@kotp/shared/rules";
+import type { Look, Pantry, Tool } from "@kotp/shared/rules";
 import type { Direction } from "@kotp/shared/world";
 
 // Only what can't be derived from the seed and these rows is stored (CLAUDE.md Persistence).
@@ -8,6 +8,8 @@ export type StoredPlayer = {
 	readonly id: string;
 	readonly handle: string;
 	readonly tokenHash: string;
+	/** scrypt hash with its salt and cost settings; null until the profile is saved. */
+	readonly passwordHash: string | null;
 	readonly x: number;
 	readonly y: number;
 	readonly facing: Direction;
@@ -20,6 +22,11 @@ export type StoredPlayer = {
 	readonly pantry: Pantry;
 	readonly hasSpear: boolean;
 	readonly tool: Tool;
+	readonly goldSpent: number;
+	/** §9: online play time left before a zombie bear comes; null until first drawn. */
+	readonly bearDueIn: number | null;
+	readonly owned: readonly string[];
+	readonly look: Look;
 	readonly createdAt: number;
 	readonly lastSeenAt: number;
 };

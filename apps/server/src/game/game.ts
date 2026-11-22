@@ -4,9 +4,24 @@ import {
 	PROTOCOL_VERSION,
 	type ServerMessage,
 } from "@kotp/shared/protocol";
-import { checkHandle, LEADERBOARD, NETWORK, SURVIVAL } from "@kotp/shared/rules";
-import { type ChunkCoord, chunkKey, chunkOfTile, type Direction } from "@kotp/shared/world";
+import {
+	checkHandle,
+	LEADERBOARD,
+	NETWORK,
+	normalizeHandle,
+	PROFILE,
+	SURVIVAL,
+} from "@kotp/shared/rules";
+import {
+	type ChunkCoord,
+	chunkKey,
+	chunkOfTile,
+	type Direction,
+	stepToward,
+} from "@kotp/shared/world";
+import type { PasswordHasher } from "../auth/passwords";
 import { suggestHandle } from "./names";
+import { MagicShop, type ShopState } from "./shop";
 import { findSpawnTile } from "./spawn";
 import { Wildlife } from "./wildlife";
 import type { ActionResult, PlayerState, World, WorldEvent } from "./world";
@@ -19,6 +34,7 @@ export type GameDeps = {
 	readonly newId: () => string;
 	readonly newToken: () => string;
 	readonly hashToken: (token: string) => string;
+	readonly passwords: PasswordHasher;
 	/** Spawn animals and bears around players; tests usually place them by hand. */
 	readonly autoSpawnCreatures?: boolean;
 };
@@ -36,7 +52,9 @@ type Intent = Extract<
 			| "interact"
 			| "eat"
 			| "craftSpear"
-			| "selectTool";
+			| "selectTool"
+			| "buy"
+			| "equip";
 	}
 >;
 
@@ -48,6 +66,8 @@ type Session = {
 	queue: Intent[];
 	knownChunks: Set<string>;
 	lastLeaderboardAt: number;
+	/** A password check is running; one at a time per connection. */
+	authBusy: boolean;
 };
 
 /**
@@ -57,11 +77,17 @@ type Session = {
 export class Game {
 	private readonly sessions = new Map<string, Session>();
 	private readonly sessionByPlayer = new Map<string, string>();
+	/** Failed logins per handle (§ saved profiles); locks a handle for a while after too many. */
+	private readonly failedLogins = new Map<string, { count: number; lockedUntil: number }>();
 
 	readonly wildlife: Wildlife;
+	readonly shop: MagicShop;
+	private shopDay = -1;
 	private lastSurvivalTick = 0;
 
 	constructor(private readonly deps: GameDeps) {
+		this.shop = new MagicShop(deps.world, deps.seed);
+		deps.world.setStructureLookup((x, y) => this.shop.isAt(x, y, deps.now()));
 		this.wildlife = new Wildlife(deps.world, {
 			random: deps.random,
 			newId: deps.newId,
@@ -79,6 +105,7 @@ export class Game {
 			queue: [],
 			knownChunks: new Set(),
 			lastLeaderboardAt: Number.NEGATIVE_INFINITY,
+			authBusy: false,
 		});
 		send({
 			type: "hello",
@@ -113,6 +140,12 @@ export class Game {
 			case "resume":
 				this.resume(session, msg.token);
 				break;
+			case "login":
+				void this.login(session, msg.handle, msg.password);
+				break;
+			case "setPassword":
+				void this.savePassword(session, msg.password, msg.current);
+				break;
 			// Alliance changes aren't paced or ordered with movement, so they apply at once.
 			case "allyRequest":
 			case "allyAccept":
@@ -141,7 +174,9 @@ export class Game {
 					intent.type === "turn" ||
 					intent.type === "eat" ||
 					intent.type === "craftSpear" ||
-					intent.type === "selectTool";
+					intent.type === "selectTool" ||
+					intent.type === "buy" ||
+					intent.type === "equip";
 				const readyAt = instant
 					? 0
 					: intent.type === "move"
@@ -152,6 +187,7 @@ export class Game {
 				this.runIntent(session, player, intent, now);
 			}
 		}
+		this.moveShopIfDue(now);
 		const wild = this.wildlife.update(now);
 		this.publish(wild.events);
 		for (const id of wild.killed) this.killPlayer(id, "bear");
@@ -211,14 +247,87 @@ export class Game {
 			session.send({ type: "joinRejected", reason: "badToken" });
 			return;
 		}
-		// A second tab or a reconnect before the old socket timed out: the newest wins.
-		const previous = this.sessionByPlayer.get(player.id);
-		if (previous) {
-			const old = this.sessions.get(previous);
-			this.disconnect(previous);
-			old?.close();
-		}
+		this.takeOver(player.id);
 		this.enterWorld(session, player, token);
+	}
+
+	// ---------- Saved profiles ----------
+
+	/** Log in with handle and password: issues a fresh token, which signs out other browsers. */
+	private async login(session: Session, handle: string, password: string): Promise<void> {
+		if (session.playerId || session.authBusy) return;
+		const key = normalizeHandle(handle);
+		const now = this.deps.now();
+		const failures = this.failedLogins.get(key);
+		if (failures && now < failures.lockedUntil) {
+			session.send({ type: "joinRejected", reason: "tooManyAttempts" });
+			return;
+		}
+		session.authBusy = true;
+		const player = this.deps.world.playerByHandle(handle);
+		// Unknown handles still pay for a hash check, so timing doesn't reveal which names exist.
+		const stored = player?.passwordHash ?? (await this.dummyHash());
+		const ok = (await this.deps.passwords.verify(password, stored)) && !!player?.passwordHash;
+		session.authBusy = false;
+		if (!this.sessions.has(session.id) || session.playerId) return;
+		if (!ok || !player) {
+			this.recordFailedLogin(key);
+			session.send({ type: "joinRejected", reason: "badLogin" });
+			return;
+		}
+		this.failedLogins.delete(key);
+		const token = this.deps.newToken();
+		this.deps.world.replaceTokenHash(player.id, this.deps.hashToken(token));
+		this.takeOver(player.id);
+		this.enterWorld(session, player, token);
+	}
+
+	private recordFailedLogin(key: string): void {
+		const count = (this.failedLogins.get(key)?.count ?? 0) + 1;
+		const locked = count >= PROFILE.maxFailedLogins;
+		this.failedLogins.set(key, {
+			count: locked ? 0 : count,
+			lockedUntil: locked ? this.deps.now() + PROFILE.lockoutMs : 0,
+		});
+	}
+
+	private dummyHashValue: Promise<string> | null = null;
+	private dummyHash(): Promise<string> {
+		this.dummyHashValue ??= this.deps.passwords.hash("no profile here");
+		return this.dummyHashValue;
+	}
+
+	/** Save the profile with a password. Changing an existing password needs the current one. */
+	private async savePassword(session: Session, password: string, current?: string): Promise<void> {
+		const playerId = session.playerId;
+		if (!playerId) return;
+		if (session.authBusy) {
+			session.send({ type: "profileRejected", reason: "busy" });
+			return;
+		}
+		session.authBusy = true;
+		try {
+			const existing = this.deps.world.playerById(playerId)?.passwordHash;
+			if (existing && !(await this.deps.passwords.verify(current ?? "", existing))) {
+				session.send({ type: "profileRejected", reason: "wrongCurrent" });
+				return;
+			}
+			const hash = await this.deps.passwords.hash(password);
+			if (!this.deps.world.playerById(playerId)) return;
+			this.deps.world.setPasswordHash(playerId, hash);
+			session.send({ type: "profileSaved" });
+		} finally {
+			session.authBusy = false;
+		}
+	}
+
+	/** A second tab or a reconnect before the old socket timed out: the newest wins. */
+	private takeOver(playerId: string): void {
+		const previous = this.sessionByPlayer.get(playerId);
+		if (!previous) return;
+		const old = this.sessions.get(previous);
+		this.disconnect(previous);
+		old?.close();
 	}
 
 	private enterWorld(session: Session, player: PlayerState, token: string): void {
@@ -235,18 +344,59 @@ export class Game {
 			gold: 0,
 			goldPerMinute: 0,
 			serverTime: now,
+			hasPassword: player.passwordHash !== null,
 		});
 		// Offline earnings (§6) are settled and shown as soon as the player is back.
 		this.sendInventory(player.id);
 		this.refreshInterest(session, player);
 		this.sendAlliances(player.id);
 		this.sendStatus(player.id);
+		this.sendBases(player.id);
+		this.sendCollection(player.id);
 		this.sendNear(
 			player.x,
 			player.y,
 			{ type: "player", player: this.deps.world.playerInfo(player) },
 			player.id,
 		);
+	}
+
+	private axeAtCreature(player: PlayerState): boolean {
+		const at = stepToward(player.x, player.y, player.facing);
+		return this.wildlife.hasCreatureAt(at.x, at.y);
+	}
+
+	// ---------- Compass and magic shop (§10) ----------
+
+	private sendBases(playerId: string): void {
+		this.sessionOf(playerId)?.send({ type: "bases", bases: this.deps.world.bases(playerId) });
+	}
+
+	private sendCollection(playerId: string): void {
+		const p = this.deps.world.playerById(playerId);
+		if (!p) return;
+		this.sessionOf(playerId)?.send({ type: "collection", owned: p.owned, equipped: p.look });
+	}
+
+	private shopMessage(shop: ShopState): ServerMessage {
+		return {
+			type: "shop",
+			x: shop.x,
+			y: shop.y,
+			offer: this.shop.offerInfo(shop),
+			movesAt: shop.movesAt,
+		};
+	}
+
+	/** At midnight UTC the shop vanishes from its old spot and appears at the new one. */
+	private moveShopIfDue(now: number): void {
+		const previous = this.shop.peek();
+		const shop = this.shop.current(now);
+		if (shop.day === this.shopDay) return;
+		this.shopDay = shop.day;
+		if (previous && previous.day !== shop.day)
+			this.sendNear(previous.x, previous.y, { type: "shopGone" });
+		this.sendNear(shop.x, shop.y, this.shopMessage(shop));
 	}
 
 	// ---------- Survival (§8) ----------
@@ -285,19 +435,20 @@ export class Game {
 
 	// ---------- Gold and leaderboards (§6, §7) ----------
 
-	/** Settles the player's mines first: reading a balance is a settlement point (§10). */
+	/** Settles the player's mines first: reading a balance is a settlement point (§11). */
 	private sendInventory(playerId: string): void {
 		const { world } = this.deps;
 		const p = world.playerById(playerId);
 		const s = this.sessionOf(playerId);
 		if (!p || !s) return;
 		const now = this.deps.now();
-		world.settlePlayerGold(playerId, now);
+		// Clients show the spendable balance; the leaderboard keeps ranking gold earned (§10).
+		const balance = world.balance(playerId, now);
 		s.send({
 			type: "inventory",
 			wood: p.wood,
 			iron: p.iron,
-			gold: p.gold,
+			gold: balance,
 			goldPerMinute: world.goldPerMinute(playerId),
 			asOf: now,
 		});
@@ -452,7 +603,10 @@ export class Game {
 				result =
 					player.tool === "spear"
 						? this.wildlife.spearHit(player, now)
-						: world.chop(player.id, now, intent.confirmAlly ?? false);
+						: this.axeAtCreature(player)
+							? // Swinging the axe at an animal: point the player at the spear instead.
+								{ ok: false, reason: player.hasSpear ? "useSpear" : "noSpear", events: [] }
+							: world.chop(player.id, now, intent.confirmAlly ?? false);
 				break;
 			case "interact":
 				result = world.interact(player.id, now);
@@ -466,8 +620,16 @@ export class Game {
 			case "selectTool":
 				result = world.selectTool(player.id, intent.tool);
 				break;
+			case "buy": {
+				const shop = this.shop.current(now);
+				result = world.buy(player.id, intent.itemId, shop.offer, shop, now);
+				break;
+			}
+			case "equip":
+				result = world.equip(player.id, intent.slot, intent.itemId);
+				break;
 			case "build":
-				result = world.build(player.id, now);
+				result = world.build(player.id, now, intent.dir);
 				break;
 			case "upgrade":
 				result = world.upgrade(player.id, now);
@@ -543,6 +705,12 @@ export class Game {
 				case "status":
 					this.sendStatus(e.id);
 					break;
+				case "bases":
+					this.sendBases(e.id);
+					break;
+				case "collection":
+					this.sendCollection(e.id);
+					break;
 				case "notice":
 					this.sessionOf(e.id)?.send({ type: "notice", notice: e.notice });
 					break;
@@ -602,6 +770,10 @@ export class Game {
 		for (const key of fresh) {
 			const { cx, cy } = wanted.get(key) as ChunkCoord;
 			session.send({ type: "chunk", cx, cy, ...world.chunkSnapshot(cx, cy) });
+		}
+		const shop = this.shop.current(this.deps.now());
+		if (freshSet.has(chunkKey(chunkOfTile(shop.x, shop.y).cx, chunkOfTile(shop.x, shop.y).cy))) {
+			session.send(this.shopMessage(shop));
 		}
 		for (const creature of this.wildlife.all()) {
 			const { cx, cy } = chunkOfTile(creature.x, creature.y);

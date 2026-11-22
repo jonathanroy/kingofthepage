@@ -58,6 +58,16 @@ export function drawDust(ctx: Ctx): void {
 	px(ctx, C.dust, 0, 1, 4, 2);
 }
 
+/** §1 Swimming: a ring of ripples around a swimmer's chest, 16×4. Lopsided so flipping it shimmers. */
+export function drawRipple(ctx: Ctx): void {
+	px(ctx, C.waterLight, 3, 0, 9, 1);
+	px(ctx, C.waterLight, 1, 1, 2, 1);
+	px(ctx, C.waterLight, 13, 1, 2, 1);
+	px(ctx, "#ffffff", 4, 2, 3, 1);
+	px(ctx, C.waterLight, 7, 2, 6, 1);
+	px(ctx, C.waterDeep, 2, 3, 12, 1);
+}
+
 /** A short water glint. */
 export function drawGlint(ctx: Ctx): void {
 	px(ctx, "#ffffff", 0, 0, 3, 1);

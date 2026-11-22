@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { TREE } from "./config";
+import { PACE, TREE } from "./config";
 import { buildFence, makeGate } from "./fences";
-import { isWalkable, isWalkableFor, isWallFor, resolveTile } from "./tiles";
+import {
+	canMoveOnto,
+	isWalkable,
+	isWalkableFor,
+	isWallFor,
+	moveIntervalFor,
+	resolveTile,
+} from "./tiles";
+import type { Fence } from "./types";
 
 const T0 = 1_000_000;
 
@@ -68,5 +76,34 @@ describe("walls and walkability", () => {
 		expect(isWalkable(rubble)).toBe(true);
 		expect(isWalkable({ kind: "ore", remaining: 1, capacity: 100 })).toBe(false);
 		expect(isWallFor({ kind: "ore", remaining: 1, capacity: 100 }, "p")).toBe(false);
+	});
+});
+
+describe("swimming (§1 Movement)", () => {
+	const noAllies = () => false;
+
+	it("lets players move onto water, slower than walking", () => {
+		expect(canMoveOnto({ kind: "water" }, "me", noAllies)).toBe(true);
+		expect(moveIntervalFor({ kind: "water" })).toBe(PACE.swimMoveIntervalMs);
+		expect(moveIntervalFor({ kind: "grass" })).toBe(PACE.moveIntervalMs);
+		expect(PACE.swimMoveIntervalMs).toBeGreaterThan(PACE.moveIntervalMs);
+	});
+
+	it("keeps water unwalkable for creatures, spawns and building, and a wall for enclosures", () => {
+		expect(isWalkable({ kind: "water" })).toBe(false);
+		expect(isWallFor({ kind: "water" }, "me")).toBe(true);
+	});
+
+	it("still blocks hills and others' fences", () => {
+		expect(canMoveOnto({ kind: "hill" }, "me", noAllies)).toBe(false);
+		const fence: Fence = {
+			ownerId: "other",
+			level: 1,
+			damage: 0,
+			woodInvested: 2,
+			ironInvested: 0,
+			gate: false,
+		};
+		expect(canMoveOnto({ kind: "fence", fence }, "me", noAllies)).toBe(false);
 	});
 });

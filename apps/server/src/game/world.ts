@@ -10,11 +10,16 @@ import {
 	type AllyCheck,
 	addFood,
 	agePantry,
+	type Base,
+	basesOf,
 	bearCanClaw,
 	buildFence,
+	type Collectible,
 	type ControllerChange,
+	canBuy,
 	canEnterTile,
 	canMakeGate,
+	canMoveOnto,
 	canPlaceFence,
 	canUpgradeFence,
 	chopFence,
@@ -24,6 +29,7 @@ import {
 	type Enclosure,
 	type EnclosureChanges,
 	emptyPantry,
+	equip as equipItem,
 	FENCE_LEVELS,
 	type Fence,
 	type FenceAt,
@@ -40,11 +46,12 @@ import {
 	ironFromHit,
 	isDead,
 	isWalkable,
-	isWalkableFor,
 	LandRegistry,
+	type Look,
 	landScores,
 	makeGate,
 	mineGoldPerMinute,
+	moveIntervalFor,
 	needsAllyConfirmation,
 	nextToSpoil,
 	normalizeHandle,
@@ -53,6 +60,7 @@ import {
 	type Pantry,
 	recomputeOwnerEnclosures,
 	resolveTile,
+	type Slot,
 	type Survival,
 	settleMineGold,
 	spendWork,
@@ -89,7 +97,10 @@ import type {
 export type PlayerState = {
 	readonly id: string;
 	readonly handle: string;
-	readonly tokenHash: string;
+	/** Replaced on every password login, which signs out other browsers. */
+	tokenHash: string;
+	/** Set once the player saves their profile; null for token-only players. */
+	passwordHash: string | null;
 	readonly createdAt: number;
 	x: number;
 	y: number;
@@ -108,6 +119,12 @@ export type PlayerState = {
 	pantry: Pantry;
 	hasSpear: boolean;
 	tool: Tool;
+	/** §10: gold spent at the magic shop. Balance = gold - goldSpent; the leaderboard uses gold. */
+	goldSpent: number;
+	/** §9: online play time left before a zombie bear comes; null until first drawn. */
+	bearDueIn: number | null;
+	owned: string[];
+	look: Look;
 };
 
 /** Something clients may need to hear about. The game routes these by interest. */
@@ -118,6 +135,10 @@ export type WorldEvent =
 	| { readonly kind: "inventory"; readonly id: string }
 	/** Meters, food or tools of this player changed (§8, §9). */
 	| { readonly kind: "status"; readonly id: string }
+	/** This player's bases changed (§10 compass). */
+	| { readonly kind: "bases"; readonly id: string }
+	/** This player's collectibles changed (§10). */
+	| { readonly kind: "collection"; readonly id: string }
 	| { readonly kind: "notice"; readonly id: string; readonly notice: Notice }
 	/** A creature appeared, moved or was hurt (§9). */
 	| {
@@ -184,6 +205,8 @@ export class World {
 	private readonly occupancy = new Map<string, number>();
 	/** Set by the wildlife system: players can't walk into a creature (§9). */
 	private creatureAt: (x: number, y: number) => boolean = () => false;
+	/** Set by the game: the magic shop is a solid tile nobody walks or builds on (§10). */
+	private structureAt: (x: number, y: number) => boolean = () => false;
 
 	private readonly dirtyPlayers = new Set<string>();
 	private readonly dirtyTiles = new Map<string, TileCoord>();
@@ -204,6 +227,7 @@ export class World {
 				nextMoveAt: 0,
 				nextActionAt: 0,
 				survival: { health: p.health, food: p.food, water: p.water },
+				owned: [...p.owned],
 			});
 		for (const f of snapshot.fences) {
 			this.setDiff(f.x, f.y, {
@@ -346,6 +370,27 @@ export class World {
 		return id ? this.players.get(id) : undefined;
 	}
 
+	/** §9: the bear countdown is saved with the player so it survives restarts. */
+	setBearDueIn(id: string, ms: number): void {
+		this.requirePlayer(id).bearDueIn = ms;
+		this.dirtyPlayers.add(id);
+	}
+
+	/** Saves the profile with a (hashed) password. */
+	setPasswordHash(id: string, passwordHash: string): void {
+		this.requirePlayer(id).passwordHash = passwordHash;
+		this.dirtyPlayers.add(id);
+	}
+
+	/** Issues a new resume token; the old one stops working. */
+	replaceTokenHash(id: string, tokenHash: string): void {
+		const p = this.requirePlayer(id);
+		this.tokenIndex.delete(p.tokenHash);
+		p.tokenHash = tokenHash;
+		this.tokenIndex.set(tokenHash, id);
+		this.dirtyPlayers.add(id);
+	}
+
 	playerByTokenHash(tokenHash: string): PlayerState | undefined {
 		const id = this.tokenIndex.get(tokenHash);
 		return id ? this.players.get(id) : undefined;
@@ -370,6 +415,7 @@ export class World {
 			id: input.id,
 			handle: input.handle,
 			tokenHash: input.tokenHash,
+			passwordHash: null,
 			createdAt: input.now,
 			x: input.at.x,
 			y: input.at.y,
@@ -382,6 +428,10 @@ export class World {
 			pantry: emptyPantry(),
 			hasSpear: false,
 			tool: "axe",
+			goldSpent: 0,
+			bearDueIn: null,
+			owned: [],
+			look: {},
 			online: false,
 			nextMoveAt: 0,
 			nextActionAt: 0,
@@ -413,7 +463,7 @@ export class World {
 	}
 
 	playerInfo(p: PlayerState): PlayerInfo {
-		return { id: p.id, handle: p.handle, x: p.x, y: p.y, facing: p.facing };
+		return { id: p.id, handle: p.handle, x: p.x, y: p.y, facing: p.facing, look: p.look };
 	}
 
 	// ---------- Intents (§1 movement, §2 chopping, §3 fences) ----------
@@ -427,9 +477,11 @@ export class World {
 		const turnEvents: WorldEvent[] = turned ? [{ kind: "player", id, fromX: p.x, fromY: p.y }] : [];
 
 		const to = stepToward(p.x, p.y, dir);
+		const target = this.tileAt(to.x, to.y, now);
 		if (
-			!isWalkableFor(this.tileAt(to.x, to.y, now), id, this.allyCheck(id)) ||
-			this.creatureAt(to.x, to.y)
+			!canMoveOnto(target, id, this.allyCheck(id)) ||
+			this.creatureAt(to.x, to.y) ||
+			this.structureAt(to.x, to.y)
 		) {
 			return { ok: false, reason: "blocked", events: turnEvents };
 		}
@@ -447,7 +499,7 @@ export class World {
 		this.occupy(to.x, to.y, 1);
 		p.x = to.x;
 		p.y = to.y;
-		p.nextMoveAt = now + PACE.moveIntervalMs;
+		p.nextMoveAt = now + moveIntervalFor(target);
 		const events: WorldEvent[] = [{ kind: "player", id, fromX: from.x, fromY: from.y }];
 		// Leaving a stump can let a waiting tree grow back (§2).
 		if (this.getDiff(from.x, from.y)?.choppedAt !== undefined) {
@@ -600,6 +652,66 @@ export class World {
 		this.creatureAt = lookup;
 	}
 
+	setStructureLookup(lookup: (x: number, y: number) => boolean): void {
+		this.structureAt = lookup;
+	}
+
+	// ---------- Compass and magic shop (§10) ----------
+
+	bases(id: string): Base[] {
+		return basesOf(this.land.enclosuresOf(id));
+	}
+
+	/** Spendable gold, settled first so it's exact. */
+	balance(id: string, now: number): number {
+		this.settlePlayerGold(id, now);
+		const p = this.requirePlayer(id);
+		return p.gold - p.goldSpent;
+	}
+
+	/** Buy one of today's collectibles while facing the shop at `shopAt`. */
+	buy(
+		id: string,
+		itemId: string,
+		offer: readonly Collectible[],
+		shopAt: TileCoord,
+		now: number,
+	): ActionResult {
+		const p = this.requirePlayer(id);
+		const facing = stepToward(p.x, p.y, p.facing);
+		if (facing.x !== shopAt.x || facing.y !== shopAt.y)
+			return { ok: false, reason: "notAtShop", events: [] };
+		const check = canBuy(offer, itemId, p.owned, this.balance(id, now));
+		if (!check.ok) return { ok: false, reason: check.reason, events: [] };
+		p.goldSpent += check.price;
+		p.owned = [...p.owned, itemId];
+		this.dirtyPlayers.add(id);
+		return {
+			ok: true,
+			events: [
+				{ kind: "inventory", id },
+				{ kind: "collection", id },
+				{ kind: "notice", id, notice: { kind: "bought", itemId } },
+			],
+		};
+	}
+
+	/** Wear an owned collectible, or clear a slot. Everyone nearby sees the change. */
+	equip(id: string, slot: Slot, itemId: string | null): ActionResult {
+		const p = this.requirePlayer(id);
+		const look = equipItem(p.look, p.owned, slot, itemId);
+		if (!look) return { ok: false, reason: "notOwned", events: [] };
+		p.look = look;
+		this.dirtyPlayers.add(id);
+		return {
+			ok: true,
+			events: [
+				{ kind: "player", id, fromX: p.x, fromY: p.y },
+				{ kind: "collection", id },
+			],
+		};
+	}
+
 	/** Every work action makes the player hungrier and thirstier. */
 	private work(p: PlayerState): void {
 		p.survival = spendWork(p.survival);
@@ -744,7 +856,7 @@ export class World {
 
 	/** Open, unoccupied ground a creature may step onto. */
 	isOpenForCreature(x: number, y: number, now: number): boolean {
-		return isWalkable(this.tileAt(x, y, now)) && !this.isOccupied(x, y);
+		return isWalkable(this.tileAt(x, y, now)) && !this.isOccupied(x, y) && !this.structureAt(x, y);
 	}
 
 	/**
@@ -781,13 +893,15 @@ export class World {
 		};
 	}
 
-	build(id: string, now: number): ActionResult {
+	/** §3: build on a tile next to the player, the faced one by default. */
+	build(id: string, now: number, dir?: Direction): ActionResult {
 		const p = this.requirePlayer(id);
-		const target = stepToward(p.x, p.y, p.facing);
+		const target = stepToward(p.x, p.y, dir ?? p.facing);
 		const tile = this.tileAt(target.x, target.y, now);
 		p.nextActionAt = now + PACE.actionIntervalMs;
 
-		const placement = canPlaceFence(tile, this.isOccupied(target.x, target.y), p.wood);
+		const blocked = this.isOccupied(target.x, target.y) || this.structureAt(target.x, target.y);
+		const placement = canPlaceFence(tile, blocked, p.wood);
 		if (!placement.ok) return { ok: false, reason: placement.reason, events: [] };
 
 		p.wood -= fenceBuildCost();
@@ -810,6 +924,7 @@ export class World {
 		fences: FenceInfo[];
 		ore: [number, number, number][];
 		harvested: [number, number, number][];
+		royal: string[];
 		control: ChunkControl;
 		handles: Record<string, string>;
 	} {
@@ -838,11 +953,15 @@ export class World {
 			}
 		}
 		const handleIds = new Set([...owners, ...fences.map((f) => f.ownerId)]);
+		const royal = [...new Set(fences.map((f) => f.ownerId))].filter(
+			(id) => this.players.get(id)?.look.banner === "royal-banner",
+		);
 		return {
 			chopped,
 			fences,
 			ore,
 			harvested,
+			royal,
 			control: { owners, cells: any ? cells : null },
 			handles: this.handlesFor(handleIds),
 		};
@@ -892,8 +1011,11 @@ export class World {
 		}
 		for (const e of changes.added) this.enclosuresAdded.set(e.id, toStoredEnclosure(e));
 		const controllerChanges = this.land.apply(changes);
-		if (controllerChanges.length === 0) return [];
+		const basesChanged = changes.added.length + changes.removed.length > 0;
+		const basesEvent: WorldEvent[] = basesChanged ? [{ kind: "bases", id: ownerId }] : [];
+		if (controllerChanges.length === 0) return basesEvent;
 		return [
+			...basesEvent,
 			{ kind: "control", changes: controllerChanges },
 			...this.updateMineControl(controllerChanges, now),
 		];
@@ -902,7 +1024,7 @@ export class World {
 	// ---------- Gold mines (§6) ----------
 
 	/**
-	 * §10: when a mine's controller changes, pay out the old controller first, then start
+	 * §11: when a mine's controller changes, pay out the old controller first, then start
 	 * the new one's clock. Returns inventory events for everyone whose income changed.
 	 */
 	private updateMineControl(changes: readonly ControllerChange[], now: number): WorldEvent[] {
@@ -1081,6 +1203,7 @@ function toStoredPlayer(p: PlayerState): StoredPlayer {
 		id: p.id,
 		handle: p.handle,
 		tokenHash: p.tokenHash,
+		passwordHash: p.passwordHash,
 		x: p.x,
 		y: p.y,
 		facing: p.facing,
@@ -1093,6 +1216,10 @@ function toStoredPlayer(p: PlayerState): StoredPlayer {
 		pantry: p.pantry,
 		hasSpear: p.hasSpear,
 		tool: p.tool,
+		goldSpent: p.goldSpent,
+		bearDueIn: p.bearDueIn,
+		owned: p.owned,
+		look: p.look,
 		createdAt: p.createdAt,
 		lastSeenAt: p.lastSeenAt,
 	};

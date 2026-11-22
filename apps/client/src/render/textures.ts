@@ -1,5 +1,15 @@
+import { COLLECTIBLES } from "@kotp/shared/rules";
 import type Phaser from "phaser";
 import { drawAxe, drawPlayerSheet, PLAYER_DIRECTIONS, WALK_FRAMES } from "../art/characters";
+import {
+	drawCape,
+	drawHat,
+	drawPetSheet,
+	drawRoyalPennantSheet,
+	drawShopTent,
+	hatHeight,
+	PET_FRAMES,
+} from "../art/cosmetics";
 import { CREATURE_FRAMES, drawCreatureSheet, drawSpear } from "../art/creatures";
 import {
 	drawAppleIcon,
@@ -12,6 +22,7 @@ import {
 	drawLogIcon,
 	drawMeatIcon,
 	drawPotatoIcon,
+	drawRipple,
 	drawSparkleSheet,
 } from "../art/effects";
 import { drawGround, T } from "../art/ground";
@@ -61,6 +72,23 @@ export function createStaticTextures(scene: Phaser.Scene): void {
 	addCanvasTexture(scene, "food-potato", 7, 6, drawPotatoIcon);
 	addCanvasTexture(scene, "food-meat", 7, 6, drawMeatIcon);
 	addCanvasTexture(scene, "spear", 12, 4, drawSpear);
+	addCanvasTexture(scene, "shop-tent", TILE, TILE, drawShopTent);
+	addCanvasTexture(scene, "pennant-royal", 12, 9, drawRoyalPennantSheet, 6);
+	for (const c of COLLECTIBLES) {
+		if (c.slot === "hat")
+			addCanvasTexture(scene, `hat-${c.id}`, TILE, hatHeight(), (ctx) => drawHat(ctx, c.id));
+		if (c.slot === "cape")
+			addCanvasTexture(scene, `cape-${c.id}`, TILE, TILE, (ctx) => drawCape(ctx, c.id));
+		if (c.slot === "pet")
+			addCanvasTexture(
+				scene,
+				`pet-${c.id}`,
+				TILE * PET_FRAMES,
+				TILE,
+				(ctx) => drawPetSheet(ctx, c.id),
+				TILE,
+			);
+	}
 	for (const kind of ["rabbit", "deer", "bear"] as const) {
 		addCanvasTexture(
 			scene,
@@ -73,6 +101,7 @@ export function createStaticTextures(scene: Phaser.Scene): void {
 	}
 	addCanvasTexture(scene, "chip", 2, 2, drawChip);
 	addCanvasTexture(scene, "dust", 4, 3, drawDust);
+	addCanvasTexture(scene, "ripple", 16, 4, drawRipple);
 	addCanvasTexture(scene, "glint", 3, 1, drawGlint);
 	addCanvasTexture(scene, "axe", 8, 8, drawAxe);
 	const frames = (key: string, count: number) =>
@@ -84,6 +113,14 @@ export function createStaticTextures(scene: Phaser.Scene): void {
 			frameRate: 12,
 			repeat: -1,
 			repeatDelay: 1400,
+		});
+	}
+	if (!scene.anims.exists("pennant-royal")) {
+		scene.anims.create({
+			key: "pennant-royal",
+			frames: frames("pennant-royal", 2),
+			frameRate: 3,
+			repeat: -1,
 		});
 	}
 	if (!scene.anims.exists("pennant")) {

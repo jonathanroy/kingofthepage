@@ -1,5 +1,5 @@
-import "@fontsource/pixelify-sans/500.css";
-import "@fontsource/pixelify-sans/700.css";
+// Jersey 10: a pixel font with clear, distinct digits (Pixelify's 3/5/6/8/9 and C were hard to read).
+import "@fontsource/jersey-10/400.css";
 import Phaser from "phaser";
 import { Connection, tokenStorage } from "./net/connection";
 import { WorldScene } from "./render/worldScene";
@@ -18,7 +18,7 @@ async function startGame(): Promise<void> {
 	starting = true;
 	// Name tags are drawn into the canvas, so the pixel font must be ready before the first one.
 	await Promise.race([
-		document.fonts.load('8px "Pixelify Sans"'),
+		document.fonts.load('10px "Jersey 10"'),
 		new Promise((resolve) => setTimeout(resolve, 1500)),
 	]).catch(() => undefined);
 	if (game) return;
@@ -32,6 +32,16 @@ async function startGame(): Promise<void> {
 		confirm: (text) => hud.confirm(text),
 		onStatusChanged: () => {
 			if (world.status) hud.updateStatus(world.status);
+		},
+		openShop: () => {
+			if (world.shop) {
+				hud.openShop(world.shop, world.collection.owned, world.liveGold(), world.serverNow());
+			}
+		},
+		openWardrobe: () => hud.openWardrobe(world.collection.owned, world.collection.equipped),
+		cycleBase: () => hud.cycleBase(),
+		onCompassChanged: () => {
+			if (world.me) hud.updateCompass(world.me, world.bases);
 		},
 	});
 	game = new Phaser.Game({
@@ -59,6 +69,7 @@ const connection = new Connection({
 			case "joined":
 				tokenStorage.set(msg.token);
 				hud.hideJoin();
+				hud.setProfile(msg.you.handle, msg.hasPassword);
 				if (world.me) hud.update(world.me);
 				void startGame();
 				startTimers();
@@ -70,8 +81,22 @@ const connection = new Connection({
 			case "rejected":
 				hud.rejected(msg.reason);
 				break;
+			case "profileSaved":
+				hud.profileSaved();
+				break;
+			case "profileRejected":
+				hud.profileRejected(msg.reason);
+				break;
 			case "notice":
 				hud.notice(msg.notice);
+				break;
+			case "collection":
+				// Refresh an open shop or wardrobe so Buy/Wear buttons match what's owned now.
+				if (hud.modalOpen && world.shop && !document.getElementById("shop")?.hidden) {
+					hud.openShop(world.shop, world.collection.owned, world.liveGold(), world.serverNow());
+				} else if (!document.getElementById("wardrobe")?.hidden) {
+					hud.openWardrobe(world.collection.owned, world.collection.equipped);
+				}
 				break;
 			case "alliances":
 				hud.renderAlliances(world.alliances);
@@ -101,7 +126,11 @@ function startTimers(): void {
 	window.setInterval(refresh, LEADERBOARD_REFRESH_MS);
 }
 
-hud.onJoin((handle) => connection.send({ type: "join", handle }));
+hud.onJoin(
+	(handle) => connection.send({ type: "join", handle }),
+	(handle, password) => connection.send({ type: "login", handle, password }),
+);
+hud.onProfile((password, current) => connection.send({ type: "setPassword", password, current }));
 hud.onAlliance({
 	request: (handle) => connection.send({ type: "allyRequest", handle }),
 	accept: (playerId) => connection.send({ type: "allyAccept", playerId }),
@@ -109,4 +138,12 @@ hud.onAlliance({
 	end: (playerId) => connection.send({ type: "allyEnd", playerId }),
 });
 hud.onTypingChange((typing) => scene?.setKeyboardEnabled(!typing));
+hud.onShop(
+	{
+		buy: (itemId) => connection.send({ type: "buy", itemId, seq: connection.nextSeq() }),
+		equip: (slot, itemId) =>
+			connection.send({ type: "equip", slot, itemId, seq: connection.nextSeq() }),
+	},
+	(open) => scene?.setKeyboardEnabled(!open),
+);
 connection.open();

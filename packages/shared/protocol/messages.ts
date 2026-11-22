@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PROFILE } from "../rules/config";
 
 export const PROTOCOL_VERSION = 1;
 
@@ -11,6 +12,18 @@ export const DirectionSchema = z.enum(["up", "down", "left", "right"]);
 export const ClientMessageSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("join"), handle: z.string().max(64) }),
 	z.object({ type: z.literal("resume"), token: z.string().min(1).max(128) }),
+	/** Log back in to a saved profile, e.g. from another browser. */
+	z.object({
+		type: z.literal("login"),
+		handle: z.string().max(64),
+		password: z.string().min(1).max(PROFILE.passwordMaxLength),
+	}),
+	/** Save the profile with a password; changing it needs the current one. */
+	z.object({
+		type: z.literal("setPassword"),
+		password: z.string().min(PROFILE.passwordMinLength).max(PROFILE.passwordMaxLength),
+		current: z.string().max(PROFILE.passwordMaxLength).optional(),
+	}),
 	z.object({ type: z.literal("move"), dir: DirectionSchema, seq }),
 	/** Face a direction without moving, e.g. to build on an empty tile. */
 	z.object({ type: z.literal("turn"), dir: DirectionSchema, seq }),
@@ -19,8 +32,11 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
 	 * accepted the warning about chopping an ally's fence (§4).
 	 */
 	z.object({ type: z.literal("chop"), seq, confirmAlly: z.boolean().optional() }),
-	/** Build a fence on the tile the player faces. */
-	z.object({ type: z.literal("build"), seq }),
+	/**
+	 * Build a fence on a tile next to the player: the faced one, or the one in `dir`
+	 * (used to lay fences behind you while walking).
+	 */
+	z.object({ type: z.literal("build"), seq, dir: DirectionSchema.optional() }),
 	/** Upgrade (and repair) the player's own fence they face (§3). */
 	z.object({ type: z.literal("upgrade"), seq }),
 	/** Turn the player's own fence they face into a gate (§3 Gates). */
@@ -38,6 +54,15 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("eat"), seq }),
 	/** §9: craft a spear. */
 	z.object({ type: z.literal("craftSpear"), seq }),
+	/** §10: buy one of today's collectibles while facing the magic shop. */
+	z.object({ type: z.literal("buy"), itemId: z.string().max(64), seq }),
+	/** §10: wear an owned collectible, or take a slot off with itemId null. */
+	z.object({
+		type: z.literal("equip"),
+		slot: z.enum(["hat", "cape", "pet", "aura", "name", "banner"]),
+		itemId: z.string().max(64).nullable(),
+		seq,
+	}),
 	/** §9: choose what the chop key uses. */
 	z.object({ type: z.literal("selectTool"), tool: z.enum(["axe", "spear"]), seq }),
 ]);
@@ -48,12 +73,18 @@ export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
 export type Facing = z.infer<typeof DirectionSchema>;
 
+/** Collectibles a player wears, one per slot (§10). */
+export type LookInfo = Readonly<
+	Partial<Record<"hat" | "cape" | "pet" | "aura" | "name" | "banner", string>>
+>;
+
 export type PlayerInfo = {
 	readonly id: string;
 	readonly handle: string;
 	readonly x: number;
 	readonly y: number;
 	readonly facing: Facing;
+	readonly look: LookInfo;
 };
 
 export type FenceInfo = {
@@ -98,6 +129,7 @@ export type Notice =
 	| { readonly kind: "allianceFormed"; readonly with: PlayerRef }
 	| { readonly kind: "allianceEnded"; readonly with: PlayerRef }
 	| { readonly kind: "bearComing" }
+	| { readonly kind: "bought"; readonly itemId: string }
 	| { readonly kind: "died"; readonly cause: "starved" | "bear" }
 	| { readonly kind: "ate"; readonly food: "apple" | "berries" | "potato" | "meat" }
 	| { readonly kind: "spoiled"; readonly food: "apple" | "berries" | "potato" | "meat" }
@@ -113,7 +145,16 @@ export type ChunkControl = {
 	readonly cells: readonly number[] | null;
 };
 
-export type JoinRejectReason = "handleInvalid" | "handleTaken" | "badToken" | "alreadyOnline";
+export type JoinRejectReason =
+	| "handleInvalid"
+	| "handleTaken"
+	| "badToken"
+	| "alreadyOnline"
+	/** Unknown handle or wrong password: deliberately the same answer for both. */
+	| "badLogin"
+	| "tooManyAttempts";
+
+export type ProfileRejectReason = "wrongCurrent" | "busy";
 
 export type ActionRejectReason =
 	| "tooSoon"
@@ -138,7 +179,12 @@ export type ActionRejectReason =
 	| "alreadyHaveSpear"
 	| "useAxe"
 	| "useSpear"
-	| "nothingToHit";
+	| "nothingToHit"
+	| "notForSale"
+	| "alreadyOwned"
+	| "notEnoughGold"
+	| "notAtShop"
+	| "notOwned";
 
 export type ServerMessage =
 	| {
@@ -158,8 +204,12 @@ export type ServerMessage =
 			readonly gold: number;
 			readonly goldPerMinute: number;
 			readonly serverTime: number;
+			/** Whether this profile is saved with a password. */
+			readonly hasPassword: boolean;
 	  }
 	| { readonly type: "joinRejected"; readonly reason: JoinRejectReason; readonly detail?: string }
+	| { readonly type: "profileSaved" }
+	| { readonly type: "profileRejected"; readonly reason: ProfileRejectReason }
 	| {
 			readonly type: "chunk";
 			readonly cx: number;
@@ -173,6 +223,8 @@ export type ServerMessage =
 			readonly ore: readonly (readonly [number, number, number])[];
 			readonly control: ChunkControl;
 			readonly handles: Readonly<Record<string, string>>;
+			/** Owners in this chunk whose walls fly the royal banner (§10). */
+			readonly royal: readonly string[];
 	  }
 	| {
 			readonly type: "tile";
@@ -238,6 +290,22 @@ export type ServerMessage =
 	  }
 	| { readonly type: "creature"; readonly creature: CreatureInfo }
 	| { readonly type: "creatureGone"; readonly id: string }
+	/** §10: the receiving player's bases, largest first, for the flag compass. */
+	| {
+			readonly type: "bases";
+			readonly bases: readonly { readonly x: number; readonly y: number; readonly area: number }[];
+	  }
+	/** §10: the magic shop, sent only to players whose view includes it. */
+	| {
+			readonly type: "shop";
+			readonly x: number;
+			readonly y: number;
+			readonly offer: readonly { readonly id: string; readonly price: number }[];
+			readonly movesAt: number;
+	  }
+	| { readonly type: "shopGone" }
+	/** §10: what the receiving player owns and wears. */
+	| { readonly type: "collection"; readonly owned: readonly string[]; readonly equipped: LookInfo }
 	/** After dying, the player starts again here (§8). */
 	| { readonly type: "respawned"; readonly x: number; readonly y: number; readonly facing: Facing }
 	| { readonly type: "rejected"; readonly seq: number; readonly reason: ActionRejectReason };

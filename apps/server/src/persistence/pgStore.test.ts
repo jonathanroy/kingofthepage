@@ -41,6 +41,7 @@ describe.skipIf(!url)("PgStore", () => {
 			id,
 			handle: `T${id.slice(0, 8)}`,
 			tokenHash: `hash-${id}`,
+			passwordHash: "scrypt$16384$8$1$c2FsdA==$a2V5" as string | null,
 			x: -5,
 			y: 7,
 			facing: "left" as const,
@@ -53,6 +54,10 @@ describe.skipIf(!url)("PgStore", () => {
 			pantry: { ...emptyPantry(), apple: { count: 2, spoil: 1000 } },
 			hasSpear: true,
 			tool: "spear" as const,
+			goldSpent: 21_600,
+			bearDueIn: 123_456 as number | null,
+			owned: ["straw-hat"],
+			look: { hat: "straw-hat" },
 			createdAt: 1000,
 			lastSeenAt: 2000,
 		};
@@ -110,6 +115,10 @@ describe.skipIf(!url)("PgStore", () => {
 			hasSpear: true,
 			tool: "spear",
 			pantry: { apple: { count: 2, spoil: 1000 } },
+			goldSpent: 21_600,
+			bearDueIn: 123_456 as number | null,
+			owned: ["straw-hat"],
+			look: { hat: "straw-hat" },
 		});
 		expect(snap.enclosures.find((e) => e.id === enclosureId)).toBeUndefined();
 	});

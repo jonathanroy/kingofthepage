@@ -119,6 +119,18 @@ describe("tools and hunting (§9)", () => {
 		expect(h.game.wildlife.info(rabbit)).toBeNull();
 	});
 
+	it("tells axe users to craft or switch to the spear when facing an animal", () => {
+		const { h, c, p } = solo();
+		h.game.wildlife.spawn("rabbit", 1, 0, h.now());
+		c.send({ type: "chop", seq: 1 });
+		h.tick();
+		expect(c.last("rejected")?.reason).toBe("noSpear");
+		p.hasSpear = true;
+		c.send({ type: "chop", seq: 2 });
+		h.advance(ACT);
+		expect(c.last("rejected")?.reason).toBe("useSpear");
+	});
+
 	it("doesn't let players walk into a creature", () => {
 		const { h, id } = solo();
 		h.game.wildlife.spawn("deer", 1, 0, h.now());
@@ -189,5 +201,38 @@ describe("automatic spawning", () => {
 			expect(Math.abs(a.x) + Math.abs(a.y)).toBeLessThanOrEqual(CREATURES.despawnRange);
 			expect(h.world.land.enclosuresAt(a.x, a.y)).toHaveLength(0);
 		}
+	});
+});
+
+describe("zombie bear timing (§9)", () => {
+	const bearsSent = (c: { of: (t: "creature") => { creature: { kind: string } }[] }) =>
+		c.of("creature").filter((m) => m.creature.kind === "bear").length;
+
+	it("sends a bear when the player's online countdown runs out, then draws a new one", () => {
+		const h = createHarness({}, {}, {}, {}, { autoSpawnCreatures: true });
+		const c = h.client();
+		const id = c.join("Marco");
+		h.relocate(id, 0, 0, "down");
+		h.world.setBearDueIn(id, 9_000);
+		h.advance(5_000);
+		expect(h.world.playerById(id)?.bearDueIn).toBe(4_000);
+		expect(bearsSent(c)).toBe(0);
+		h.advance(5_000);
+		expect(bearsSent(c)).toBe(1);
+		const next = h.world.playerById(id)?.bearDueIn ?? 0;
+		expect(next).toBeGreaterThanOrEqual(CREATURES.bearDelayMinMs);
+		expect(next).toBeLessThanOrEqual(CREATURES.bearDelayMaxMs);
+	});
+
+	it("pauses while offline and keeps the countdown through a save and reload", () => {
+		const h = createHarness({}, {}, {}, {}, { autoSpawnCreatures: true });
+		const c = h.client();
+		const id = c.join("Marco");
+		h.world.setBearDueIn(id, 60_000);
+		h.game.disconnect(c.sessionId);
+		for (let i = 0; i < 30; i++) h.advance(5_000);
+		expect(h.world.playerById(id)?.bearDueIn).toBe(60_000);
+		const saved = h.world.takeWriteBatch().players.find((p) => p.id === id);
+		expect(saved?.bearDueIn).toBe(60_000);
 	});
 });

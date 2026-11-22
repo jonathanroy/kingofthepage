@@ -1,5 +1,6 @@
 import type { ClientMessage, ServerMessage } from "@kotp/shared/protocol";
 import type { Direction, Forage, MineSize, Terrain, TerrainGenerator } from "@kotp/shared/world";
+import type { PasswordHasher } from "../auth/passwords";
 import { Game } from "../game/game";
 import { World } from "../game/world";
 
@@ -18,6 +19,12 @@ export function terrainFrom(
 		forageAt: (x, y) => forage[`${x},${y}`] ?? null,
 	};
 }
+
+/** Instant, reversible stand-in for scrypt so game tests stay fast; the real hasher has its own tests. */
+const fakePasswords: PasswordHasher = {
+	hash: async (password) => `pw:${password}`,
+	verify: async (password, stored) => stored === `pw:${password}`,
+};
 
 /** Small deterministic PRNG (mulberry32) so test runs are repeatable. */
 export function seededRandom(seed: number): () => number {
@@ -48,6 +55,7 @@ export function createHarness(
 	mines: Record<string, MineSize> = {},
 	ore: Record<string, number> = {},
 	forage: Record<string, Forage> = {},
+	options: { autoSpawnCreatures?: boolean } = {},
 ) {
 	let time = 1_000_000;
 	let ids = 0;
@@ -66,7 +74,8 @@ export function createHarness(
 		newId: () => `id${++ids}`,
 		newToken: () => `token${++ids}`,
 		hashToken: (t) => `hash:${t}`,
-		autoSpawnCreatures: false,
+		passwords: fakePasswords,
+		autoSpawnCreatures: options.autoSpawnCreatures ?? false,
 	});
 
 	function client(): TestClient {

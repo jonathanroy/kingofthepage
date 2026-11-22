@@ -1,4 +1,4 @@
-import { emptyPantry, type Pantry } from "@kotp/shared/rules";
+import { emptyPantry, type Look, type Pantry } from "@kotp/shared/rules";
 import {
 	bigint,
 	boolean,
@@ -22,6 +22,7 @@ export const players = pgTable("players", {
 	/** Lowercased handle; enforces case-insensitive uniqueness. */
 	handleKey: text("handle_key").notNull().unique(),
 	tokenHash: text("token_hash").notNull().unique(),
+	passwordHash: text("password_hash"),
 	x: integer("x").notNull(),
 	y: integer("y").notNull(),
 	facing: text("facing").notNull(),
@@ -36,6 +37,11 @@ export const players = pgTable("players", {
 	pantry: jsonb("pantry").$type<Pantry>().notNull().default(emptyPantry()),
 	hasSpear: boolean("has_spear").notNull().default(false),
 	tool: text("tool").notNull().default("axe"),
+	// §10 Magic shop: spending is tracked apart from gold earned, which the leaderboard ranks.
+	goldSpent: doublePrecision("gold_spent").notNull().default(0),
+	bearDueIn: ms("bear_due_in"),
+	owned: jsonb("owned").$type<string[]>().notNull().default([]),
+	look: jsonb("look").$type<Look>().notNull().default({}),
 	createdAt: ms("created_at").notNull(),
 	lastSeenAt: ms("last_seen_at").notNull(),
 });

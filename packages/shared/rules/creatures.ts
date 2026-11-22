@@ -9,6 +9,12 @@ export function bearCanClaw(fence: Fence): boolean {
 	return fence.level <= CREATURES.bearMaxFenceLevel;
 }
 
+/** §9: online play time until the next zombie bear, a random draw within the configured range. */
+export function drawBearDelay(random: () => number): number {
+	const { bearDelayMinMs: min, bearDelayMaxMs: max } = CREATURES;
+	return Math.round(min + random() * (max - min));
+}
+
 export function creatureMaxHp(kind: CreatureKind): number {
 	return CREATURES[kind].hp;
 }

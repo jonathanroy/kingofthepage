@@ -1,4 +1,4 @@
-import { ENCLOSURE, PACE, SPAWN, TREE } from "@kotp/shared/rules";
+import { ENCLOSURE, PACE, PROFILE, SPAWN, TREE } from "@kotp/shared/rules";
 import { describe, expect, it } from "vitest";
 import { MemoryStore } from "../persistence/memoryStore";
 import { buildRing, createHarness } from "../testing/harness";
@@ -103,8 +103,8 @@ describe("movement (§1, §5 Access)", () => {
 		expect(c.last("moved")).toMatchObject({ seq: 2, x: 2 });
 	});
 
-	it("is blocked by water, hills and trees", () => {
-		const h = createHarness({ "1,0": "water", "0,1": "hill", "-1,0": "tree" });
+	it("is blocked by hills, trees and rocks", () => {
+		const h = createHarness({ "1,0": "hill", "0,1": "tree" }, {}, { "-1,0": 50 });
 		const c = h.client();
 		const id = c.join("Marco");
 		h.relocate(id, 0, 0, "down");
@@ -156,6 +156,20 @@ describe("building and claiming (§3, §5)", () => {
 		h.advance(ACT);
 		expect(c.last("inventory")?.wood).toBe(3);
 		expect(c.last("tile")).toMatchObject({ x: 1, y: 0, fence: { ownerId: id, level: 1 } });
+	});
+
+	it("builds on any tile next to the player when a direction is given", () => {
+		const h = createHarness();
+		const c = h.client();
+		const id = c.join("Builder");
+		h.relocate(id, 0, 0, "right");
+		const p = h.world.playerById(id);
+		if (!p) throw new Error("missing");
+		p.wood = 10;
+		c.send({ type: "build", dir: "left", seq: 1 });
+		h.tick();
+		expect(h.world.tileAt(-1, 0, h.now()).kind).toBe("fence");
+		expect(h.world.tileAt(1, 0, h.now()).kind).toBe("grass");
 	});
 
 	it("claims an enclosed area and tells nearby players who controls it", () => {
@@ -331,5 +345,166 @@ describe("persistence", () => {
 
 	it("respects the configured maximum enclosure area", () => {
 		expect(ENCLOSURE.maxArea).toBeGreaterThan(9);
+	});
+});
+
+describe("swimming (§1 Movement)", () => {
+	const lake = { "1,0": "water", "2,0": "water", "3,0": "water" } as const;
+
+	it("crosses water at swimming pace", () => {
+		const h = createHarness(lake);
+		const c = h.client();
+		const id = c.join("Marco");
+		h.relocate(id, 0, 0, "right");
+		c.send({ type: "move", dir: "right", seq: 1 });
+		h.tick();
+		expect(c.last("moved")).toMatchObject({ seq: 1, x: 1 });
+		// The next stroke waits for the slower swim interval.
+		c.send({ type: "move", dir: "right", seq: 2 });
+		h.advance(STEP);
+		expect(h.world.playerById(id)?.x).toBe(1);
+		h.advance(PACE.swimMoveIntervalMs - STEP);
+		expect(h.world.playerById(id)?.x).toBe(2);
+	});
+
+	it("can't climb onto someone else's claimed shore", () => {
+		// Owner's land (x 5..6, y -1..1) is closed by fences on three sides and the lake on the west.
+		const features: Record<string, "water"> = {};
+		for (let y = -3; y <= 3; y++) features[`4,${y}`] = "water";
+		const h = createHarness(features);
+		const ownerId = h.client().join("Owner");
+		const owner = h.world.playerById(ownerId);
+		if (owner) owner.wood = 1000;
+		const fences: [number, number, number, number, "up" | "down" | "left"][] = [
+			...[5, 6, 7].map((x) => [x, -2, x, -3, "down"] as [number, number, number, number, "down"]),
+			...[5, 6, 7].map((x) => [x, 2, x, 3, "up"] as [number, number, number, number, "up"]),
+			...[-1, 0, 1].map((y) => [7, y, 8, y, "left"] as [number, number, number, number, "left"]),
+		];
+		let t = h.now();
+		for (const [, , sx, sy, facing] of fences) {
+			h.world.relocate(ownerId, sx, sy, facing);
+			t += 1000;
+			expect(h.world.build(ownerId, t).ok).toBe(true);
+		}
+		h.skip(t - h.now());
+		expect(h.world.land.enclosuresAt(5, 0)).toHaveLength(1);
+		const swimmer = h.client();
+		const swimmerId = swimmer.join("Swimmer");
+		h.relocate(swimmerId, 4, 0, "right");
+		h.skip(10_000);
+		expect(h.world.move(swimmerId, "right", h.now())).toMatchObject({
+			ok: false,
+			reason: "noAccess",
+		});
+	});
+
+	it("still treats water as a wall for enclosures and can't build on it", () => {
+		const h = createHarness(lake);
+		const c = h.client();
+		const id = c.join("Marco");
+		const p = h.world.playerById(id);
+		if (p) p.wood = 100;
+		h.relocate(id, 0, 0, "right");
+		expect(h.world.build(id, h.now())).toMatchObject({ ok: false });
+		expect(h.world.tileAt(1, 0, h.now()).kind).toBe("water");
+	});
+});
+
+describe("saved profiles", () => {
+	/** Lets the async password checks finish. */
+	const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+	async function savedProfile(h: ReturnType<typeof createHarness>) {
+		const c = h.client();
+		const id = c.join("Marco");
+		c.send({ type: "setPassword", password: "hunter22" });
+		await settle();
+		expect(c.last("profileSaved")).toBeTruthy();
+		return { c, id };
+	}
+
+	it("starts without a password and saves one", async () => {
+		const h = createHarness();
+		const c = h.client();
+		c.join("Marco");
+		expect(c.last("joined")?.hasPassword).toBe(false);
+		c.send({ type: "setPassword", password: "hunter22" });
+		await settle();
+		expect(c.last("profileSaved")).toBeTruthy();
+		expect(h.world.takeWriteBatch().players[0]?.passwordHash).toBeTruthy();
+	});
+
+	it("logs back in from another browser, in any letter case, and signs out the old one", async () => {
+		const h = createHarness();
+		const { c: first, id } = await savedProfile(h);
+		const oldToken = first.last("joined")?.token ?? "";
+		const second = h.client();
+		second.send({ type: "login", handle: "marco", password: "hunter22" });
+		await settle();
+		const joined = second.last("joined");
+		expect(joined).toMatchObject({ you: { id }, hasPassword: true });
+		expect(joined?.token).not.toBe(oldToken);
+		expect(first.closed).toBe(true);
+		// The old browser's token no longer resumes; the new one does.
+		const third = h.client();
+		third.send({ type: "resume", token: oldToken });
+		expect(third.last("joinRejected")?.reason).toBe("badToken");
+	});
+
+	it("gives the same answer for a wrong password and an unknown or unsaved name", async () => {
+		const h = createHarness();
+		await savedProfile(h);
+		h.client().join("Nopass");
+		for (const [handle, password] of [
+			["Marco", "wrong-pass"],
+			["Ghost", "hunter22"],
+			["Nopass", "anything"],
+		] as const) {
+			const c = h.client();
+			c.send({ type: "login", handle, password });
+			await settle();
+			expect(c.last("joinRejected")?.reason).toBe("badLogin");
+			expect(c.last("joined")).toBeUndefined();
+		}
+	});
+
+	it("locks a name after too many failed logins, then lets it in again", async () => {
+		const h = createHarness();
+		await savedProfile(h);
+		const c = h.client();
+		for (let i = 0; i < PROFILE.maxFailedLogins; i++) {
+			c.send({ type: "login", handle: "Marco", password: "nope-nope" });
+			await settle();
+		}
+		c.send({ type: "login", handle: "Marco", password: "hunter22" });
+		await settle();
+		expect(c.last("joinRejected")?.reason).toBe("tooManyAttempts");
+		h.skip(PROFILE.lockoutMs);
+		c.send({ type: "login", handle: "Marco", password: "hunter22" });
+		await settle();
+		expect(c.last("joined")).toBeTruthy();
+	});
+
+	it("needs the current password to change it", async () => {
+		const h = createHarness();
+		const { c } = await savedProfile(h);
+		c.send({ type: "setPassword", password: "newpass99", current: "wrong" });
+		await settle();
+		expect(c.last("profileRejected")?.reason).toBe("wrongCurrent");
+		c.send({ type: "setPassword", password: "newpass99", current: "hunter22" });
+		await settle();
+		const other = h.client();
+		other.send({ type: "login", handle: "Marco", password: "newpass99" });
+		await settle();
+		expect(other.last("joined")).toBeTruthy();
+	});
+
+	it("survives a save and reload", async () => {
+		const h = createHarness();
+		await savedProfile(h);
+		const store = new MemoryStore();
+		await store.write(h.world.takeWriteBatch());
+		const snapshot = await store.load();
+		expect(snapshot.players[0]?.passwordHash).toBe("pw:hunter22");
 	});
 });

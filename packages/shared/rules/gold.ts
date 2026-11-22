@@ -6,14 +6,14 @@ export function mineGoldPerMinute(size: MineSize): number {
 	return MINES.goldPerMinute[size];
 }
 
-/** Who gets a mine's gold, and since when it hasn't been paid out (§10 Lazy updates). */
+/** Who gets a mine's gold, and since when it hasn't been paid out (§11 Lazy updates). */
 export type MineControl = {
 	readonly controllerId: PlayerId;
 	readonly controlledSince: number;
 };
 
 /**
- * §6, §10: credit `elapsed minutes × rate` to the controller and restart the clock.
+ * §6, §11: credit `elapsed minutes × rate` to the controller and restart the clock.
  * Called when control changes, and before any balance or leaderboard is read.
  */
 export function settleMineGold(

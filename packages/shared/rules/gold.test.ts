@@ -3,7 +3,7 @@ import { MINES } from "./config";
 import { mineGoldPerMinute, settleMineGold } from "./gold";
 import { isWalkable, isWallFor, resolveTile } from "./tiles";
 
-describe("settleMineGold (§6, §10 Lazy updates)", () => {
+describe("settleMineGold (§6, §11 Lazy updates)", () => {
 	it("credits elapsed minutes times the rate and restarts the clock", () => {
 		const result = settleMineGold("large", { controllerId: "p", controlledSince: 0 }, 10 * 60_000);
 		expect(result.earned).toBe(10 * MINES.goldPerMinute.large);

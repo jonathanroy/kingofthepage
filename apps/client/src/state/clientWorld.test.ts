@@ -25,6 +25,7 @@ function emptyChunk(cx: number, cy: number): ServerMessage {
 		fences: [],
 		ore: [],
 		harvested: [],
+		royal: [],
 		control: { owners: [], cells: null },
 		handles: {},
 	};
@@ -43,13 +44,14 @@ function setup(serverTime = 5_000) {
 	});
 	world.apply({
 		type: "joined",
-		you: { id: "me", handle: "Me", x: spot.x, y: spot.y, facing: "down" },
+		you: { id: "me", handle: "Me", x: spot.x, y: spot.y, facing: "down", look: {} },
 		token: "t",
 		wood: 0,
 		iron: 0,
 		gold: 0,
 		goldPerMinute: 0,
 		serverTime,
+		hasPassword: false,
 	});
 	for (let cy = -2; cy <= 2; cy++) for (let cx = -2; cx <= 2; cx++) world.apply(emptyChunk(cx, cy));
 	return {
@@ -194,6 +196,7 @@ describe("ClientWorld", () => {
 			fences: [],
 			ore: [],
 			harvested: [],
+			royal: [],
 			control: { owners: ["alice"], cells },
 			handles: { alice: "Alice" },
 		});
@@ -205,12 +208,15 @@ describe("ClientWorld", () => {
 
 	it("drops chunks and players that fall outside the interest radius", () => {
 		const { world } = setup();
-		world.apply({ type: "player", player: { id: "p2", handle: "P2", x: 1, y: 1, facing: "down" } });
+		world.apply({
+			type: "player",
+			player: { id: "p2", handle: "P2", x: 1, y: 1, facing: "down", look: {} },
+		});
 		expect(world.players.has("p2")).toBe(true);
 		// The player walks out of view: observers of the old spot get one last update.
 		world.apply({
 			type: "player",
-			player: { id: "p2", handle: "P2", x: 9_999, y: 0, facing: "down" },
+			player: { id: "p2", handle: "P2", x: 9_999, y: 0, facing: "down", look: {} },
 		});
 		expect(world.players.has("p2")).toBe(false);
 
@@ -219,5 +225,22 @@ describe("ClientWorld", () => {
 		world.apply(emptyChunk(10, 0));
 		expect(world.chunks.has("0,0")).toBe(false);
 		expect(world.chunks.has("10,0")).toBe(true);
+	});
+});
+
+describe("ClientWorld swimming (§1)", () => {
+	it("predicts a move into water", () => {
+		const { world } = setup();
+		let lake: { x: number; y: number } | undefined;
+		for (let y = -40; y < 40 && !lake; y++) {
+			for (let x = -40; x < 40 && !lake; x++) {
+				if (gen.terrainAt(x, y) === "water" && gen.terrainAt(x - 1, y) === "grass") lake = { x, y };
+			}
+		}
+		if (!lake || !world.me) throw new Error("no shore near the origin for this seed");
+		world.me.x = lake.x - 1;
+		world.me.y = lake.y;
+		world.predictMove("right", 1);
+		expect(world.me).toMatchObject({ x: lake.x, y: lake.y });
 	});
 });

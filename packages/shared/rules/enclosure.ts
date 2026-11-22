@@ -206,7 +206,7 @@ function overlaps(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
 }
 
 /**
- * §5 / §10: after one of `ownerId`'s fences is placed or removed, find which of their
+ * §5 / §11: after one of `ownerId`'s fences is placed or removed, find which of their
  * enclosures disappear (breach, split, merge) and which appear.
  * Only that owner's enclosures can change, because other players' fences are open ground to them.
  */

@@ -67,7 +67,7 @@ export class PgStore implements WorldStore {
 			// Order matters for foreign keys: players first, enclosures removed before added.
 			for (const p of batch.players) {
 				const { id, ...rest } = p;
-				const row = { ...rest, handleKey: p.handle.toLowerCase() };
+				const row = { ...rest, owned: [...rest.owned], handleKey: p.handle.toLowerCase() };
 				await tx
 					.insert(schema.players)
 					.values({ id, ...row })
