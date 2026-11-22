@@ -32,6 +32,7 @@ import {
 } from "../art/effects";
 import { context, makeCanvas } from "../art/pixels";
 import type { Me, Status } from "../state/clientWorld";
+import { controlCap, pressHint, TOUCH } from "./device";
 
 function iconUrl(
 	width: number,
@@ -66,10 +67,10 @@ const REJECT_TEXT: Partial<Record<ActionRejectReason, string>> = {
 	notReady: "Nothing ripe yet. Come back later.",
 	bagFull: "Your food bag is full.",
 	nothingToEat: "You have no food. Pick apples or berries, dig potatoes, or hunt.",
-	noSpear: `You don't have a spear yet. Press C to craft one (${TOOLS.spearWood} wood, ${TOOLS.spearIron} iron).`,
+	noSpear: `You don't have a spear yet. ${pressHint("craftSpear")} to craft one (${TOOLS.spearWood} wood, ${TOOLS.spearIron} iron).`,
 	alreadyHaveSpear: "You already have a spear.",
-	useAxe: "Switch to your axe (Q) to chop or mine.",
-	useSpear: "Switch to your spear with Q to hunt.",
+	useAxe: `Switch to your axe (${pressHint("switchTool")}) to chop or mine.`,
+	useSpear: `Switch to your spear (${pressHint("switchTool")}) to hunt.`,
 	nothingToHit: "Nothing to hit there.",
 	notForSale: "The shop doesn't sell that today.",
 	alreadyOwned: "You already own that.",
@@ -115,7 +116,7 @@ function noticeText(n: Notice): string {
 		case "allianceEnded":
 			return `Your alliance with ${n.with.handle} has ended.`;
 		case "bought":
-			return `You bought the ${collectible(n.itemId)?.name ?? "item"}! Press V to wear it.`;
+			return `You bought the ${collectible(n.itemId)?.name ?? "item"}! ${pressHint("wardrobe")} to wear it.`;
 		case "bearComing":
 			return "A zombie bear is coming! Get behind strong walls or ready your spear.";
 		case "died":
@@ -207,8 +208,30 @@ export class Hud {
 		]
 			.map((item) => `<span>${item}</span>`)
 			.join("");
+		this.setUpPhoneLayout();
 		el("confirm-yes").addEventListener("click", () => this.closeConfirm(true));
 		el("confirm-no").addEventListener("click", () => this.closeConfirm(false));
+	}
+
+	/**
+	 * Phones: the meters sit just under the HUD (whose height changes as it wraps), and the
+	 * allies and leaderboard panels open from HUD buttons instead of taking screen space.
+	 */
+	private setUpPhoneLayout(): void {
+		const root = document.documentElement;
+		new ResizeObserver(() => {
+			const rect = this.hud.getBoundingClientRect();
+			root.style.setProperty("--hud-bottom", `${Math.round(rect.bottom)}px`);
+		}).observe(this.hud);
+		const board = el<HTMLDetailsElement>("board");
+		if (TOUCH) board.open = false;
+		const toggle = (panel: HTMLElement, other: HTMLElement) => {
+			other.classList.remove("open");
+			panel.classList.toggle("open");
+			if (panel === board) board.open = panel.classList.contains("open");
+		};
+		el("allies-btn").addEventListener("click", () => toggle(this.allyPanel, board));
+		el("board-btn").addEventListener("click", () => toggle(board, this.allyPanel));
 	}
 
 	onJoin(
@@ -492,8 +515,8 @@ export class Hud {
 		}
 		el("tool").textContent = s.tool === "spear" ? "Spear" : "Axe";
 		el("tool-hint").innerHTML = s.hasSpear
-			? "<kbd>Q</kbd> to switch"
-			: `<kbd>C</kbd> craft a spear (${TOOLS.spearWood} wood, ${TOOLS.spearIron} iron)`;
+			? `${controlCap("switchTool")} to switch`
+			: `${controlCap("craftSpear")} craft a spear (${TOOLS.spearWood} wood, ${TOOLS.spearIron} iron)`;
 	}
 
 	updateGold(gold: number): void {

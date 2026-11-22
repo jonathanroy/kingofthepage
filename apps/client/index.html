@@ -2,7 +2,10 @@
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+		<meta name="theme-color" content="#2b2233" />
+		<meta name="mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<title>King of the Page</title>
 		<link rel="icon" href="data:," />
 		<style>
@@ -177,6 +180,10 @@
 				z-index: 5;
 				display: grid;
 				gap: 4px;
+			}
+			#hud[hidden],
+			#status[hidden] {
+				display: none;
 			}
 			#hud .stats {
 				display: flex;
@@ -564,6 +571,230 @@
 				z-index: 20;
 				max-width: calc(100vw - 64px);
 			}
+
+			/* ---------- Phones and tablets (body.touch, set in main.ts) ---------- */
+			.touch-only {
+				display: none;
+			}
+			#join-form input {
+				flex: 1;
+				min-width: 0;
+			}
+			body.touch {
+				-webkit-tap-highlight-color: transparent;
+				overscroll-behavior: none;
+			}
+			body.touch #game,
+			#touch {
+				-webkit-user-select: none;
+				user-select: none;
+				-webkit-touch-callout: none;
+			}
+			body.touch #game {
+				touch-action: none;
+			}
+			body.touch .touch-only {
+				display: inline-block;
+			}
+			body.touch #help,
+			body.touch #hud-pos {
+				display: none;
+			}
+			body.touch #hud {
+				max-width: none;
+				top: max(8px, env(safe-area-inset-top));
+				left: max(8px, env(safe-area-inset-left));
+				right: max(8px, env(safe-area-inset-right));
+				padding: 8px 10px;
+				font-size: 20px;
+			}
+			body.touch #hud .stats {
+				gap: 6px 8px;
+			}
+			body.touch #hud .stats button {
+				font-size: 16px;
+				padding: 3px 9px;
+			}
+			body.touch #compass {
+				font-size: 17px;
+			}
+			body.touch #status {
+				top: calc(var(--hud-bottom, 110px) + 6px);
+				bottom: auto;
+				left: max(8px, env(safe-area-inset-left));
+				right: max(8px, env(safe-area-inset-right));
+				width: auto;
+				max-width: 420px;
+				padding: 6px 10px;
+				grid-template-columns: repeat(3, 1fr);
+				gap: 4px 10px;
+			}
+			body.touch #status .pantry,
+			body.touch #status .tool-row {
+				grid-column: 1 / -1;
+			}
+			body.touch #status .meter {
+				grid-template-columns: 18px 1fr 24px;
+				gap: 4px;
+			}
+			body.touch #status .meter .num {
+				font-size: 16px;
+			}
+			body.touch #status .pantry .icon {
+				width: 21px;
+				height: 18px;
+			}
+			body.touch #allies,
+			body.touch #board {
+				display: none;
+			}
+			body.touch #allies.open,
+			body.touch #board.open {
+				display: block;
+				position: fixed;
+				top: calc(var(--hud-bottom, 110px) + 6px);
+				left: 50%;
+				right: auto;
+				bottom: auto;
+				transform: translateX(-50%);
+				width: min(320px, calc(100vw - 24px));
+				z-index: 7;
+			}
+			body.touch #toast {
+				bottom: calc(env(safe-area-inset-bottom) + 200px);
+				font-size: 17px;
+			}
+			#touch {
+				position: fixed;
+				left: 0;
+				right: 0;
+				bottom: 0;
+				z-index: 6;
+				display: flex;
+				justify-content: space-between;
+				align-items: flex-end;
+				gap: 12px;
+				padding: 0 max(12px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom))
+					max(12px, env(safe-area-inset-left));
+				pointer-events: none;
+			}
+			#touch[hidden] {
+				display: none;
+			}
+			#touch > * {
+				pointer-events: auto;
+				touch-action: none;
+			}
+			#touch .dpad {
+				position: relative;
+				flex: none;
+				width: 150px;
+				height: 150px;
+				border-radius: 50%;
+				background: rgba(255, 248, 232, 0.4);
+				border: 3px solid rgba(43, 34, 51, 0.6);
+				box-shadow: inset 0 0 0 2px rgba(233, 220, 192, 0.6);
+			}
+			#touch .arrow {
+				position: absolute;
+				width: 46px;
+				height: 46px;
+				display: grid;
+				place-items: center;
+				border-radius: 8px;
+				background: var(--panel);
+				border: 2px solid var(--panel-edge);
+				box-shadow: 0 2px 0 var(--panel-edge);
+				font-size: 20px;
+				color: var(--ink);
+			}
+			#touch .arrow::before {
+				content: "▲";
+			}
+			#touch .arrow.up {
+				left: 50%;
+				top: 6px;
+				transform: translateX(-50%);
+			}
+			#touch .arrow.down {
+				left: 50%;
+				bottom: 6px;
+				transform: translateX(-50%) rotate(180deg);
+			}
+			#touch .arrow.left {
+				top: 50%;
+				left: 6px;
+				transform: translateY(-50%) rotate(-90deg);
+			}
+			#touch .arrow.right {
+				top: 50%;
+				right: 6px;
+				transform: translateY(-50%) rotate(90deg);
+			}
+			#touch .dpad[data-dir="up"] .arrow.up,
+			#touch .dpad[data-dir="down"] .arrow.down,
+			#touch .dpad[data-dir="left"] .arrow.left,
+			#touch .dpad[data-dir="right"] .arrow.right {
+				background: var(--gold);
+				box-shadow: none;
+			}
+			#touch .actions {
+				display: grid;
+				gap: 8px;
+				justify-items: end;
+				min-width: 0;
+			}
+			#touch .quick,
+			#touch .more {
+				display: flex;
+				flex-wrap: wrap;
+				justify-content: flex-end;
+				gap: 6px;
+				max-width: 270px;
+			}
+			#touch .more[hidden] {
+				display: none;
+			}
+			#touch .main {
+				display: flex;
+				gap: 12px;
+				align-items: flex-end;
+			}
+			#touch .small {
+				font-size: 17px;
+				padding: 7px 10px;
+				min-width: 58px;
+			}
+			#touch .big {
+				width: 74px;
+				height: 74px;
+				padding: 0;
+				border-radius: 50%;
+				font-size: 21px;
+			}
+			#touch .big.use {
+				width: 86px;
+				height: 86px;
+				font-size: 24px;
+			}
+			#touch .big.fence {
+				background: #e0b77a;
+			}
+			#touch button.held {
+				transform: translateY(2px);
+				box-shadow: none;
+				filter: brightness(0.9);
+			}
+			@media (orientation: landscape) and (max-height: 500px) {
+				body.touch #status {
+					right: auto;
+					width: min(420px, 48vw);
+				}
+				body.touch #toast {
+					bottom: auto;
+					top: calc(var(--hud-bottom, 110px) + 8px);
+				}
+			}
 		</style>
 	</head>
 	<body>
@@ -593,6 +824,8 @@
 				<span class="chip" title="Gold you can spend"><img class="icon coin" id="icon-gold" alt="Gold" /><b class="num" id="hud-gold">0</b><span id="hud-rate"></span></span>
 				<span id="hud-pos" title="Your position (x, y)"></span>
 				<button type="button" id="profile-btn" title="Set a password to log back in from any browser">Save profile</button>
+				<button type="button" id="allies-btn" class="touch-only">Allies</button>
+				<button type="button" id="board-btn" class="touch-only">Ranks</button>
 			</div>
 			<div id="compass">
 				<img class="flag" id="icon-compass" alt="" />
@@ -665,6 +898,12 @@
 				<p id="confirm-text"></p>
 				<div class="buttons"><button type="button" id="confirm-no">Cancel</button><button type="button" id="confirm-yes">Chop it</button></div>
 			</div>
+		</div>
+		<div id="touch" hidden>
+			<div class="dpad" aria-hidden="true">
+				<span class="arrow up"></span><span class="arrow down"></span><span class="arrow left"></span><span class="arrow right"></span>
+			</div>
+			<div class="actions"></div>
 		</div>
 		<div id="toast" class="panel" hidden></div>
 		<script type="module" src="/src/main.ts"></script>

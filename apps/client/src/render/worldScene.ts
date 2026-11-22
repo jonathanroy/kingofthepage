@@ -217,29 +217,45 @@ export class WorldScene extends Phaser.Scene {
 		};
 		// Key "down" events, not per-frame polling: Phaser clears a key's just-pressed
 		// flag on release, so a tap shorter than a frame would otherwise be lost.
-		const queue = (input: Input) => {
-			if (this.inputQueue.length < MAX_QUEUED_INPUTS) this.inputQueue.push(input);
-		};
 		for (const dir of DIRECTIONS) {
-			for (const key of this.keys[dir]) key.on("down", () => queue(dir));
+			for (const key of this.keys[dir]) key.on("down", () => this.pressInput(dir));
 		}
 		for (const action of ACTIONS) {
-			if (action === "build") continue;
-			this.keys[action].on("down", () => {
-				queue(action);
-				if (action === "chop") this.nextHeldChopAt = this.time.now + PACE.actionIntervalMs;
-			});
+			this.keys[action].on("down", () => this.pressInput(action));
 		}
-		// F: a tap builds in front; holding it while walking lays a fence on each tile you leave,
-		// which makes lines and corners easy. The tap is decided on release.
-		this.keys.build.on("down", () => {
-			this.trailWalked = false;
-		});
-		this.keys.build.on("up", () => {
-			if (!this.trailWalked) queue("build");
-		});
+		this.keys.build.on("up", () => this.releaseInput("build"));
 		this.applyZoom();
 		this.scale.on("resize", () => this.applyZoom());
+	}
+
+	/** Inputs held on the touch controls (ui/touch.ts), alongside held keys. */
+	private readonly touchHeld = new Set<Direction | Action>();
+
+	/** A key or on-screen button went down. */
+	pressInput(input: Direction | Action, fromTouch = false): void {
+		if (fromTouch) this.touchHeld.add(input);
+		if (input === "build") {
+			// A tap builds in front; holding it while walking lays a fence on each tile you leave,
+			// which makes lines and corners easy. The tap is decided on release.
+			this.trailWalked = false;
+			return;
+		}
+		if (input === "chop") this.nextHeldChopAt = this.time.now + PACE.actionIntervalMs;
+		this.queueInput(input);
+	}
+
+	/** A key or on-screen button came back up. */
+	releaseInput(input: Direction | Action, fromTouch = false): void {
+		if (fromTouch) this.touchHeld.delete(input);
+		if (input === "build" && !this.trailWalked) this.queueInput("build");
+	}
+
+	private queueInput(input: Input): void {
+		if (this.inputQueue.length < MAX_QUEUED_INPUTS) this.inputQueue.push(input);
+	}
+
+	private isHeld(input: "chop" | "build"): boolean {
+		return this.keys[input].isDown || this.touchHeld.has(input);
 	}
 
 	override update(time: number): void {
@@ -305,7 +321,7 @@ export class WorldScene extends Phaser.Scene {
 		if (held && time >= this.nextMoveAt && this.deps.world.me?.facing === held) {
 			this.sendMove(held, time);
 		}
-		if (this.keys.chop.isDown && time >= this.nextHeldChopAt && this.inputQueue.length === 0) {
+		if (this.isHeld("chop") && time >= this.nextHeldChopAt && this.inputQueue.length === 0) {
 			this.inputQueue.push("chop");
 			this.nextHeldChopAt = time + PACE.actionIntervalMs;
 		}
@@ -356,6 +372,7 @@ export class WorldScene extends Phaser.Scene {
 		else {
 			kb.disableGlobalCapture();
 			kb.resetKeys();
+			this.touchHeld.clear();
 		}
 	}
 
@@ -367,7 +384,7 @@ export class WorldScene extends Phaser.Scene {
 		this.deps.send({ type: "move", dir, seq });
 		this.nextMoveAt = time + (me ? moveIntervalFor(this.deps.world.tileAt(me.x, me.y)) : 0);
 		const moved = from && me && (me.x !== from.x || me.y !== from.y);
-		if (moved && this.keys.build.isDown) {
+		if (moved && this.isHeld("build")) {
 			// Lay a fence on the tile just left; the server builds it after the move.
 			this.trailWalked = true;
 			this.inputQueue.push(`trail-${OPPOSITE[dir]}`);
@@ -375,7 +392,10 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	private heldDirection(): Direction | null {
-		return DIRECTIONS.find((dir) => this.keys[dir].some((k) => k.isDown)) ?? null;
+		return (
+			DIRECTIONS.find((dir) => this.keys[dir].some((k) => k.isDown) || this.touchHeld.has(dir)) ??
+			null
+		);
 	}
 
 	// ---------- Rendering ----------

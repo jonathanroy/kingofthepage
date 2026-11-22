@@ -74,6 +74,8 @@ Open a second browser window, or a private window, to play against yourself.
 | V              | Wardrobe                                                       |
 | B              | Point the compass at your next base                            |
 
+On phones and tablets, the game shows touch controls instead: a D-pad (slide your thumb to change direction, hold to keep walking), big **Use** and **Fence** buttons (hold Fence while walking to lay a line), and buttons for the other actions. Add `?touch=1` to the URL to try them on a desktop.
+
 Your browser remembers your player. To play from another browser, select **Save profile** and set a password, then use **Log in** on the start screen.
 
 ## Scripts
