@@ -19,8 +19,11 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
 	 * accepted the warning about chopping an ally's fence (§4).
 	 */
 	z.object({ type: z.literal("chop"), seq, confirmAlly: z.boolean().optional() }),
-	/** Build a fence on the tile the player faces. */
-	z.object({ type: z.literal("build"), seq }),
+	/**
+	 * Build a fence on a tile next to the player: the faced one, or the one in `dir`
+	 * (used to lay fences behind you while walking).
+	 */
+	z.object({ type: z.literal("build"), seq, dir: DirectionSchema.optional() }),
 	/** Upgrade (and repair) the player's own fence they face (§3). */
 	z.object({ type: z.literal("upgrade"), seq }),
 	/** Turn the player's own fence they face into a gate (§3 Gates). */

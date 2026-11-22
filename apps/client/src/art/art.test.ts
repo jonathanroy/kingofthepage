@@ -77,8 +77,11 @@ describe("forage keys (§8)", () => {
 });
 
 describe("wall joins", () => {
-	it("round-trips through a mask", () => {
-		for (let m = 0; m < 16; m++) expect(joinsMask(joinsFromMask(m))).toBe(m);
+	it("keeps diagonal joins in the mask and flags them as corners", () => {
+		const j = { n: false, s: false, w: false, e: true, sw: true };
+		expect(joinsFromMask(joinsMask(j))).toMatchObject({ e: true, sw: true, ne: false });
+		expect(wantsPennant(j)).toBe(true);
+		for (let m = 0; m < 256; m++) expect(joinsMask(joinsFromMask(m))).toBe(m);
 	});
 
 	it("puts pennants on corners, ends and lone posts, not on straight runs", () => {

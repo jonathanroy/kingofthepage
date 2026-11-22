@@ -158,6 +158,20 @@ describe("building and claiming (§3, §5)", () => {
 		expect(c.last("tile")).toMatchObject({ x: 1, y: 0, fence: { ownerId: id, level: 1 } });
 	});
 
+	it("builds on any tile next to the player when a direction is given", () => {
+		const h = createHarness();
+		const c = h.client();
+		const id = c.join("Builder");
+		h.relocate(id, 0, 0, "right");
+		const p = h.world.playerById(id);
+		if (!p) throw new Error("missing");
+		p.wood = 10;
+		c.send({ type: "build", dir: "left", seq: 1 });
+		h.tick();
+		expect(h.world.tileAt(-1, 0, h.now()).kind).toBe("fence");
+		expect(h.world.tileAt(1, 0, h.now()).kind).toBe("grass");
+	});
+
 	it("claims an enclosed area and tells nearby players who controls it", () => {
 		const h = createHarness();
 		const owner = h.client();

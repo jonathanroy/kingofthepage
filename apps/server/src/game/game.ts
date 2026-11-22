@@ -535,7 +535,7 @@ export class Game {
 				result = world.equip(player.id, intent.slot, intent.itemId);
 				break;
 			case "build":
-				result = world.build(player.id, now);
+				result = world.build(player.id, now, intent.dir);
 				break;
 			case "upgrade":
 				result = world.upgrade(player.id, now);

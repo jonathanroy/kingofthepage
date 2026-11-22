@@ -6,20 +6,46 @@ const T = 16;
 export const WALL_TEX_HEIGHT = 20;
 export const WALL_OVERHANG = WALL_TEX_HEIGHT - T;
 
-/** Which neighbors a wall piece joins: north, south, west, east. */
+/**
+ * Which neighbors a wall piece joins: north, south, west, east, and diagonals. A diagonal join
+ * is drawn only when the two tiles beside it aren't walls: fences touching at a corner close
+ * an area (§5), so they should look joined too.
+ */
 export type WallJoins = {
 	readonly n: boolean;
 	readonly s: boolean;
 	readonly w: boolean;
 	readonly e: boolean;
+	readonly ne?: boolean;
+	readonly nw?: boolean;
+	readonly se?: boolean;
+	readonly sw?: boolean;
 };
 
 export function joinsMask(j: WallJoins): number {
-	return (j.n ? 1 : 0) | (j.s ? 2 : 0) | (j.w ? 4 : 0) | (j.e ? 8 : 0);
+	return (
+		(j.n ? 1 : 0) |
+		(j.s ? 2 : 0) |
+		(j.w ? 4 : 0) |
+		(j.e ? 8 : 0) |
+		(j.ne ? 16 : 0) |
+		(j.nw ? 32 : 0) |
+		(j.se ? 64 : 0) |
+		(j.sw ? 128 : 0)
+	);
 }
 
 export function joinsFromMask(mask: number): WallJoins {
-	return { n: !!(mask & 1), s: !!(mask & 2), w: !!(mask & 4), e: !!(mask & 8) };
+	return {
+		n: !!(mask & 1),
+		s: !!(mask & 2),
+		w: !!(mask & 4),
+		e: !!(mask & 8),
+		ne: !!(mask & 16),
+		nw: !!(mask & 32),
+		se: !!(mask & 64),
+		sw: !!(mask & 128),
+	};
 }
 
 /**
@@ -29,8 +55,51 @@ export function joinsFromMask(mask: number): WallJoins {
 export function wantsPennant(j: WallJoins): boolean {
 	const vertical = j.n || j.s;
 	const horizontal = j.w || j.e;
-	const links = [j.n, j.s, j.w, j.e].filter(Boolean).length;
-	return (vertical && horizontal) || links <= 1;
+	const diagonal = !!(j.ne || j.nw || j.se || j.sw);
+	const links = [j.n, j.s, j.w, j.e, diagonal].filter(Boolean).length;
+	return (vertical && horizontal) || diagonal || links <= 1;
+}
+
+/** Each diagonal join and the direction of the tile corner it runs toward. */
+const DIAGONALS = [
+	["ne", 1, -1],
+	["nw", -1, -1],
+	["se", 1, 1],
+	["sw", -1, 1],
+] as const;
+
+/**
+ * A stair-stepped run from the tile's center to one of its corners, so walls that touch their
+ * neighbor only at a corner still look continuous.
+ */
+function drawDiagonals(ctx: Ctx, level: number, j: WallJoins, y0: number): void {
+	const color =
+		level <= 2
+			? level === 1
+				? C.wood
+				: C.woodLight
+			: level >= 9
+				? C.steel
+				: level >= 5
+					? C.stone
+					: C.wood;
+	const dark =
+		level <= 2 ? C.woodDark : level >= 9 ? C.steelDark : level >= 5 ? C.stoneDark : C.woodDark;
+	const size = level <= 2 ? 2 : 4;
+	const cx = 8;
+	const cy = y0 + 8;
+	for (const [key, dx, dy] of DIAGONALS) {
+		if (!j[key]) continue;
+		const steps = [0, 2, 4, 6, 8].map((i) => ({
+			x: cx + dx * i - size / 2,
+			y: cy + dy * i - size / 2,
+		}));
+		for (const { x, y } of steps) px(ctx, C.outline, x - 1, y - 1, size + 2, size + 2);
+		for (const { x, y } of steps) {
+			px(ctx, color, x, y, size, size);
+			px(ctx, dark, x, y + size - 1, size, 1);
+		}
+	}
 }
 
 function fillMaterial(ctx: Ctx, level: number, x: number, y: number, w: number, h: number): void {
@@ -69,6 +138,7 @@ function fillMaterial(ctx: Ctx, level: number, x: number, y: number, w: number, 
  */
 export function drawWall(ctx: Ctx, level: number, j: WallJoins): void {
 	const y0 = WALL_OVERHANG;
+	drawDiagonals(ctx, level, j, y0);
 	if (level <= 2) {
 		const rail = level === 1 ? 1 : 2;
 		const color = level === 1 ? C.wood : C.woodLight;

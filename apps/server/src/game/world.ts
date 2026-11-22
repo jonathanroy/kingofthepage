@@ -863,9 +863,10 @@ export class World {
 		};
 	}
 
-	build(id: string, now: number): ActionResult {
+	/** §3: build on a tile next to the player, the faced one by default. */
+	build(id: string, now: number, dir?: Direction): ActionResult {
 		const p = this.requirePlayer(id);
-		const target = stepToward(p.x, p.y, p.facing);
+		const target = stepToward(p.x, p.y, dir ?? p.facing);
 		const tile = this.tileAt(target.x, target.y, now);
 		p.nextActionAt = now + PACE.actionIntervalMs;
 

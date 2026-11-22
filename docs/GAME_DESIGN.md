@@ -51,6 +51,8 @@ Numbers marked _(tunable)_ are starting values to adjust during playtesting.
 
 - Fences cost wood and are placed on empty ground: grass or the stump of a chopped tree, never on a tile where a player is standing.
 - Fences can be built anywhere, **including inside someone else's land** (see §5 Nesting).
+- Fences go on a tile **next to the player**: the one they face, or, while walking with the build key held, each tile they step off. That lays lines and corners in one walk.
+- Fences touching only at a corner are drawn joined, since they close an area just like a solid corner (§5).
 
 ### Upgrade levels
 

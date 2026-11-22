@@ -53,7 +53,9 @@ type Action =
 	| "switchTool"
 	| "wardrobe"
 	| "cycleBase";
-type Input = Direction | Action;
+/** A fence laid on the tile just left while walking with F held. */
+type TrailBuild = `trail-${Direction}`;
+type Input = Direction | Action | TrailBuild;
 const ACTIONS: readonly Action[] = [
 	"chop",
 	"build",
@@ -114,7 +116,22 @@ const TURN_PAUSE_MS = 120;
 const DIRECTIONS = ["up", "down", "left", "right"] as const;
 const GLINT_EVERY_MS = 220;
 const MAX_GLINTS = 40;
-const LABEL_FONT = '"Pixelify Sans", ui-monospace, monospace';
+const LABEL_FONT = '"Jersey 10", ui-monospace, monospace';
+
+function around8(x: number, y: number): { x: number; y: number }[] {
+	const out: { x: number; y: number }[] = [];
+	for (let dy = -1; dy <= 1; dy++) {
+		for (let dx = -1; dx <= 1; dx++) if (dx || dy) out.push({ x: x + dx, y: y + dy });
+	}
+	return out;
+}
+
+const OPPOSITE: Record<Direction, Direction> = {
+	up: "down",
+	down: "up",
+	left: "right",
+	right: "left",
+};
 
 function parseKey(key: string): [number, number] {
 	return key.split(",").map(Number) as [number, number];
@@ -146,6 +163,8 @@ export class WorldScene extends Phaser.Scene {
 	private shopView: { tent: Phaser.GameObjects.Image; sparkle: Phaser.GameObjects.Sprite } | null =
 		null;
 	private lastAuraAt = 0;
+	/** Whether the player walked while holding F, which makes it a trail rather than a tap. */
+	private trailWalked = false;
 	private readonly creatureViews = new Map<string, CreatureView>();
 	private lastPantry: Record<string, number> | null = null;
 	private nextMoveAt = 0;
@@ -199,11 +218,20 @@ export class WorldScene extends Phaser.Scene {
 			for (const key of this.keys[dir]) key.on("down", () => queue(dir));
 		}
 		for (const action of ACTIONS) {
+			if (action === "build") continue;
 			this.keys[action].on("down", () => {
 				queue(action);
 				if (action === "chop") this.nextHeldChopAt = this.time.now + PACE.actionIntervalMs;
 			});
 		}
+		// F: a tap builds in front; holding it while walking lays a fence on each tile you leave,
+		// which makes lines and corners easy. The tap is decided on release.
+		this.keys.build.on("down", () => {
+			this.trailWalked = false;
+		});
+		this.keys.build.on("up", () => {
+			if (!this.trailWalked) queue("build");
+		});
 		this.applyZoom();
 		this.scale.on("resize", () => this.applyZoom());
 	}
@@ -239,7 +267,10 @@ export class WorldScene extends Phaser.Scene {
 		while (this.inputQueue.length > 0) {
 			const next = this.inputQueue[0];
 			if (this.waitingForConfirm) return;
-			if (next === "chop") {
+			if (next?.startsWith("trail-")) {
+				const dir = next.slice("trail-".length) as Direction;
+				this.deps.send({ type: "build", dir, seq: this.deps.nextSeq() });
+			} else if (next === "chop") {
 				if (!this.sendChop()) return;
 			} else if (next === "wardrobe") {
 				this.deps.openWardrobe();
@@ -323,10 +354,18 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	private sendMove(dir: Direction, time: number): void {
+		const me = this.deps.world.me;
+		const from = me ? { x: me.x, y: me.y } : null;
 		const seq = this.deps.nextSeq();
 		this.deps.world.predictMove(dir, seq);
 		this.deps.send({ type: "move", dir, seq });
 		this.nextMoveAt = time + PACE.moveIntervalMs;
+		const moved = from && me && (me.x !== from.x || me.y !== from.y);
+		if (moved && this.keys.build.isDown) {
+			// Lay a fence on the tile just left; the server builds it after the move.
+			this.trailWalked = true;
+			this.inputQueue.push(`trail-${OPPOSITE[dir]}`);
+		}
 	}
 
 	private heldDirection(): Direction | null {
@@ -403,7 +442,7 @@ export class WorldScene extends Phaser.Scene {
 			this.updateFence(tk);
 			// Walls in the neighboring chunk may now join across the chunk edge.
 			const [fx, fy] = parseKey(tk);
-			for (const n of neighbors4(fx, fy)) {
+			for (const n of around8(fx, fy)) {
 				if (this.viewOf(n.x, n.y) !== view && world.fenceAt(n.x, n.y))
 					this.updateFence(`${n.x},${n.y}`);
 			}
@@ -490,8 +529,8 @@ export class WorldScene extends Phaser.Scene {
 			if (before?.[0] === "o") this.burstChips(x, y, 3);
 		}
 		this.updateFence(key);
-		// Neighbors may need to join or unjoin this tile's wall.
-		for (const n of neighbors4(x, y)) {
+		// Neighbors, diagonal ones included, may need to join or unjoin this tile's wall.
+		for (const n of around8(x, y)) {
 			const nk = `${n.x},${n.y}`;
 			if (this.viewOf(n.x, n.y)?.fences.has(nk) || world.fenceAt(n.x, n.y)) this.updateFence(nk);
 		}
@@ -502,7 +541,21 @@ export class WorldScene extends Phaser.Scene {
 	private joinsAt(x: number, y: number, ownerId: string): WallJoins {
 		const same = (dx: number, dy: number) =>
 			this.deps.world.fenceAt(x + dx, y + dy)?.ownerId === ownerId;
-		return { n: same(0, -1), s: same(0, 1), w: same(-1, 0), e: same(1, 0) };
+		const n = same(0, -1);
+		const s = same(0, 1);
+		const w = same(-1, 0);
+		const e = same(1, 0);
+		// A corner touch only needs drawing when no straight neighbor already turns that corner.
+		return {
+			n,
+			s,
+			w,
+			e,
+			ne: same(1, -1) && !n && !e,
+			nw: same(-1, -1) && !n && !w,
+			se: same(1, 1) && !s && !e,
+			sw: same(-1, 1) && !s && !w,
+		};
 	}
 
 	private updateFence(key: string): void {
@@ -655,7 +708,7 @@ export class WorldScene extends Phaser.Scene {
 		const label = this.add
 			.text(TILE / 2, -2, this.deps.world.isAlly(id) ? `♥ ${handle}` : handle, {
 				fontFamily: LABEL_FONT,
-				fontSize: "8px",
+				fontSize: "10px",
 				color: this.labelColor(id),
 				stroke: "#2b2233",
 				strokeThickness: 2,
@@ -1063,7 +1116,7 @@ export class WorldScene extends Phaser.Scene {
 		const label = this.add
 			.text(x + 9, y, text, {
 				fontFamily: LABEL_FONT,
-				fontSize: "8px",
+				fontSize: "10px",
 				color: icon === "coin" ? "#fff3b0" : "#ffffff",
 				stroke: "#2b2233",
 				strokeThickness: 2,

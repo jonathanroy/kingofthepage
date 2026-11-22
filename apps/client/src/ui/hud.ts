@@ -190,7 +190,7 @@ export class Hud {
 			`${k("C")} craft spear (${TOOLS.spearWood} wood, ${TOOLS.spearIron} iron)`,
 			`${k("E")} pick / drink / shop`,
 			`${k("X")} eat`,
-			`${k("F")} fence (${fenceBuildCost()})`,
+			`${k("F")} fence (${fenceBuildCost()}) · hold ${k("F")} + walk to lay a line`,
 			`${k("U")} repair / upgrade`,
 			`${k("G")} gate (+${FENCE.gateConversionCost})`,
 			`${k("V")} wardrobe`,
