@@ -1,3 +1,4 @@
+import type { Pantry, Tool } from "@kotp/shared/rules";
 import type { Direction } from "@kotp/shared/world";
 
 // Only what can't be derived from the seed and these rows is stored (CLAUDE.md Persistence).
@@ -13,6 +14,12 @@ export type StoredPlayer = {
 	readonly wood: number;
 	readonly iron: number;
 	readonly gold: number;
+	readonly health: number;
+	readonly food: number;
+	readonly water: number;
+	readonly pantry: Pantry;
+	readonly hasSpear: boolean;
+	readonly tool: Tool;
 	readonly createdAt: number;
 	readonly lastSeenAt: number;
 };
@@ -41,6 +48,9 @@ export type StoredAlliance = { readonly a: string; readonly b: string };
 
 export type StoredChop = { readonly x: number; readonly y: number; readonly choppedAt: number };
 
+/** When a food plant was last harvested (§8). */
+export type StoredForage = { readonly x: number; readonly y: number; readonly harvestedAt: number };
+
 /** Iron mined from the ore rock on a tile; rocks never regrow, so rows are never removed. */
 export type StoredOre = { readonly x: number; readonly y: number; readonly mined: number };
 
@@ -58,6 +68,7 @@ export type WorldSnapshot = {
 	readonly fences: readonly StoredFence[];
 	readonly chops: readonly StoredChop[];
 	readonly ore: readonly StoredOre[];
+	readonly forage: readonly StoredForage[];
 	readonly enclosures: readonly StoredEnclosure[];
 	readonly alliances: readonly StoredAlliance[];
 	readonly mines: readonly StoredMine[];
@@ -70,6 +81,7 @@ export type WriteBatch = {
 	readonly chopsSet: readonly StoredChop[];
 	readonly chopsRemoved: readonly { readonly x: number; readonly y: number }[];
 	readonly oreSet: readonly StoredOre[];
+	readonly forageSet: readonly StoredForage[];
 	readonly enclosuresAdded: readonly StoredEnclosure[];
 	readonly enclosuresRemoved: readonly string[];
 	readonly alliancesSet: readonly StoredAlliance[];
@@ -86,6 +98,7 @@ export function isEmptyBatch(b: WriteBatch): boolean {
 			b.chopsSet.length +
 			b.chopsRemoved.length +
 			b.oreSet.length +
+			b.forageSet.length +
 			b.enclosuresAdded.length +
 			b.enclosuresRemoved.length +
 			b.alliancesSet.length +

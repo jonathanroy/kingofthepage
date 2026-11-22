@@ -171,7 +171,64 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
 
 ---
 
-## 8. Technical notes
+## 8. Survival
+
+Players must eat and drink to stay alive.
+
+### Meters
+
+- Every player has three meters from 0 to 100: **health**, **food** and **water**.
+- Food and water drain over time _(tunable, e.g. food 1 per minute, water 1.5 per minute)_, and faster while working: every chop, mining hit, build, upgrade, spear thrust or harvest costs a little extra.
+- **Health** falls only while food or water is empty, or when a zombie bear bites. It recovers slowly while both food and water are at least half full.
+- At **0 health** the player dies and respawns like a new player (near a fence, full meters), losing everything they carry: wood, iron, food and their spear. Their land, walls, gold and alliances stay. The axe is never lost.
+- **Offline pause:** meters and food spoilage stop while a player is offline. Nobody dies or loses food overnight.
+
+### Water
+
+- Drink by facing a lake tile and using the **interact** key. Each sip restores a good part of the water meter _(tunable)_.
+
+### Food
+
+| Food | Found | Restores | Spoils (one item lost every) |
+|---|---|---|---|
+| Apples | Apple trees (some round trees), picked with interact | 15 | 30 min |
+| Berries | Berry bushes, picked with interact | 8 | 15 min |
+| Potatoes | Wild potato patches, dug with interact | 25 | 60 min |
+| Meat | Hunting rabbits and deer with the spear | 35 | 12 min |
+
+_(All values tunable.)_
+
+- Apple trees, berry bushes and potato patches are placed from the world seed. A harvest takes everything on the plant; it grows back after a delay _(tunable)_. Chopping an apple tree removes it like any tree.
+- **Limited storage:** a player carries at most 12 food items in total _(tunable)_. Harvests and kills beyond that are refused or partly lost.
+- **Spoilage:** each kind of food loses one item at its own interval while the player is online, so stockpiling only goes so far.
+- **Eating** uses the eat key and eats the item closest to spoiling.
+
+---
+
+## 9. Tools and creatures
+
+### Tools
+
+- Players carry an **axe** (always) and can craft one **spear** _(cost: 4 wood + 1 iron, tunable)_.
+- The chop key uses whichever tool is selected; a key switches between them.
+  - **Axe:** chops trees and fences, mines iron ore.
+  - **Spear:** hits the rabbit, deer or zombie bear in front of the player. It doesn't chop or mine.
+
+### Animals
+
+- **Rabbits** (1 hit, 1 meat) and **deer** (3 hits, 3 meat) roam near online players and flee when someone comes close. They are not saved: they come and go around players.
+
+### Zombie bears
+
+- A **rare event** _(tunable, about once per 40 minutes of play)_: a zombie bear appears some distance from an online player and walks toward them.
+- Bears **claw through fences and gates of levels 1–3**. Walls of **level 4 and up hold them back** completely, so iron-reinforced walls are the defense.
+- Next to a player, a bear bites for heavy damage every second or so.
+- A bear takes **12 spear hits** to kill _(tunable)_ and gives up and leaves after a few minutes.
+- Bears only come for players who are online.
+
+---
+
+## 10. Technical notes
 
 ### Terrain and storage
 
@@ -202,7 +259,7 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
 
 ---
 
-## 9. MVP scope
+## 11. MVP scope
 
 **Included:** movement, real-time player visibility, procedural terrain, chopping trees, wood inventory, building fences, enclosure detection, colored ownership overlay, breach detection.
 
@@ -212,6 +269,6 @@ For now, gold is only for **bragging rights** on the leaderboard. Future ideas: 
 
 ---
 
-## 10. Open questions
+## 12. Open questions
 
 - None right now.

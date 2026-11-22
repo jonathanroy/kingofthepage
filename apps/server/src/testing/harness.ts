@@ -1,5 +1,5 @@
 import type { ClientMessage, ServerMessage } from "@kotp/shared/protocol";
-import type { Direction, MineSize, Terrain, TerrainGenerator } from "@kotp/shared/world";
+import type { Direction, Forage, MineSize, Terrain, TerrainGenerator } from "@kotp/shared/world";
 import { Game } from "../game/game";
 import { World } from "../game/world";
 
@@ -8,12 +8,14 @@ export function terrainFrom(
 	features: Record<string, Terrain> = {},
 	mines: Record<string, MineSize> = {},
 	ore: Record<string, number> = {},
+	forage: Record<string, Forage> = {},
 ): TerrainGenerator {
 	return {
 		seed: "test",
 		terrainAt: (x, y) => features[`${x},${y}`] ?? "grass",
 		mineAt: (x, y) => mines[`${x},${y}`] ?? null,
 		oreAt: (x, y) => ore[`${x},${y}`] ?? null,
+		forageAt: (x, y) => forage[`${x},${y}`] ?? null,
 	};
 }
 
@@ -45,6 +47,7 @@ export function createHarness(
 	features: Record<string, Terrain> = {},
 	mines: Record<string, MineSize> = {},
 	ore: Record<string, number> = {},
+	forage: Record<string, Forage> = {},
 ) {
 	let time = 1_000_000;
 	let ids = 0;
@@ -53,7 +56,7 @@ export function createHarness(
 		seed: "test",
 		random,
 		newId: () => `id${++ids}`,
-		terrain: terrainFrom(features, mines, ore),
+		terrain: terrainFrom(features, mines, ore, forage),
 	});
 	const game = new Game({
 		world,
@@ -63,6 +66,7 @@ export function createHarness(
 		newId: () => `id${++ids}`,
 		newToken: () => `token${++ids}`,
 		hashToken: (t) => `hash:${t}`,
+		autoSpawnCreatures: false,
 	});
 
 	function client(): TestClient {

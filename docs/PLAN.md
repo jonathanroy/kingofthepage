@@ -1,6 +1,6 @@
 # Build plan
 
-Milestones follow the stages in `GAME_DESIGN.md` §9. Rules come first in each stage: they live in `packages/shared/rules` as pure functions and are tested before any server or client code uses them.
+Milestones follow the stages in `GAME_DESIGN.md` §11. Rules come first in each stage: they live in `packages/shared/rules` as pure functions and are tested before any server or client code uses them.
 
 Status: ☐ not started · ◐ in progress · ☑ done
 
@@ -70,4 +70,10 @@ Full nesting and controller rules, seeded gold mines with lazy `settleMineGold`,
 
 ## Design decisions
 
-Splitting, merging and terrain-only areas are settled in `GAME_DESIGN.md` §5. The remaining questions in §10 don't block M2.
+Splitting, merging and terrain-only areas are settled in `GAME_DESIGN.md` §5. The remaining questions in §12 don't block M2.
+
+## After M7: added features
+
+- Cuter art moved into the game (`apps/client/src/art`).
+- Iron ore: rocks beside hills, iron for wall levels 4, 8, 9, 10 (migration `0003`).
+- Survival and creatures (design doc §8, §9): food and water meters, foraging (apples, berries, potatoes), food bag with spoilage, drinking from lakes, spear crafting and tool switching, rabbits and deer to hunt, rare zombie bears that claw weak fences (migration `0004`).

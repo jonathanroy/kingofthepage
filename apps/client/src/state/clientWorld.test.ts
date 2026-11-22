@@ -24,6 +24,7 @@ function emptyChunk(cx: number, cy: number): ServerMessage {
 		chopped: [],
 		fences: [],
 		ore: [],
+		harvested: [],
 		control: { owners: [], cells: null },
 		handles: {},
 	};
@@ -105,6 +106,37 @@ describe("ClientWorld", () => {
 		expect(world.liveGold()).toBeCloseTo(16);
 	});
 
+	it("tracks status, creatures and respawns (§8, §9)", () => {
+		const { world, spot } = setup();
+		world.apply({
+			type: "status",
+			health: 80,
+			food: 50,
+			water: 40,
+			pantry: { apple: 2, berries: 0, potato: 1, meat: 0 },
+			hasSpear: true,
+			tool: "spear",
+		});
+		expect(world.status).toMatchObject({ health: 80, tool: "spear", pantry: { apple: 2 } });
+		const creature = {
+			id: "c1",
+			kind: "rabbit" as const,
+			x: spot.x + 1,
+			y: spot.y,
+			facing: "left" as const,
+			hp: 1,
+			maxHp: 1,
+		};
+		world.apply({ type: "creature", creature });
+		// Can't walk into a creature.
+		world.predictMove("right", 1);
+		expect(world.me?.x).toBe(spot.x);
+		world.apply({ type: "creatureGone", id: "c1" });
+		expect(world.creatures.size).toBe(0);
+		world.apply({ type: "respawned", x: 5, y: 6, facing: "down" });
+		expect(world.me).toMatchObject({ x: 5, y: 6 });
+	});
+
 	it("predicts a turn without moving", () => {
 		const { world, spot } = setup();
 		world.predictTurn("up");
@@ -120,6 +152,7 @@ describe("ClientWorld", () => {
 			choppedAt: null,
 			fence: { x: spot.x + 1, y: spot.y, ownerId: "other", level: 1, damage: 0, gate: false },
 			oreMined: null,
+			harvestedAt: null,
 		});
 		world.predictMove("right", 1);
 		expect(world.me).toMatchObject({ x: spot.x, facing: "right" });
@@ -135,7 +168,15 @@ describe("ClientWorld", () => {
 		}
 		if (!tree) throw new Error("no tree in chunk 0,0 for this seed");
 		const { x, y } = tree;
-		world.apply({ type: "tile", x, y, choppedAt: world.serverNow(), fence: null, oreMined: null });
+		world.apply({
+			type: "tile",
+			x,
+			y,
+			choppedAt: world.serverNow(),
+			fence: null,
+			oreMined: null,
+			harvestedAt: null,
+		});
 		expect(world.tileAt(x, y).kind).toBe("stump");
 		tick(60 * 60 * 1000);
 		expect(world.tileAt(x, y).kind).toBe("tree");
@@ -152,6 +193,7 @@ describe("ClientWorld", () => {
 			chopped: [],
 			fences: [],
 			ore: [],
+			harvested: [],
 			control: { owners: ["alice"], cells },
 			handles: { alice: "Alice" },
 		});

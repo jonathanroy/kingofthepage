@@ -32,6 +32,14 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("allyEnd"), playerId: z.string().max(64) }),
 	/** §7: ask for both leaderboards. */
 	z.object({ type: z.literal("leaderboard") }),
+	/** §8: drink from the lake, pick apples or berries, or dig potatoes on the faced tile. */
+	z.object({ type: z.literal("interact"), seq }),
+	/** §8: eat the carried food closest to spoiling. */
+	z.object({ type: z.literal("eat"), seq }),
+	/** §9: craft a spear. */
+	z.object({ type: z.literal("craftSpear"), seq }),
+	/** §9: choose what the chop key uses. */
+	z.object({ type: z.literal("selectTool"), tool: z.enum(["axe", "spear"]), seq }),
 ]);
 
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
@@ -59,6 +67,23 @@ export type FenceInfo = {
 
 export type PlayerRef = { readonly id: string; readonly handle: string };
 
+export type FoodCounts = {
+	readonly apple: number;
+	readonly berries: number;
+	readonly potato: number;
+	readonly meat: number;
+};
+
+export type CreatureInfo = {
+	readonly id: string;
+	readonly kind: "rabbit" | "deer" | "bear";
+	readonly x: number;
+	readonly y: number;
+	readonly facing: Facing;
+	readonly hp: number;
+	readonly maxHp: number;
+};
+
 export type LeaderboardEntry = PlayerRef & { readonly value: number };
 
 export type Notice =
@@ -72,6 +97,10 @@ export type Notice =
 	| { readonly kind: "allianceRequestSent"; readonly to: PlayerRef }
 	| { readonly kind: "allianceFormed"; readonly with: PlayerRef }
 	| { readonly kind: "allianceEnded"; readonly with: PlayerRef }
+	| { readonly kind: "bearComing" }
+	| { readonly kind: "died"; readonly cause: "starved" | "bear" }
+	| { readonly kind: "ate"; readonly food: "apple" | "berries" | "potato" | "meat" }
+	| { readonly kind: "spoiled"; readonly food: "apple" | "berries" | "potato" | "meat" }
 	| {
 			readonly kind: "allianceRequestFailed";
 			readonly reason: "unknownHandle" | "self" | "alreadyAllies" | "alreadyRequested";
@@ -100,7 +129,16 @@ export type ActionRejectReason =
 	| "maxLevel"
 	| "alreadyGate"
 	| "nothingToUpgrade"
-	| "allyConfirmRequired";
+	| "allyConfirmRequired"
+	| "nothingToInteract"
+	| "notReady"
+	| "bagFull"
+	| "nothingToEat"
+	| "noSpear"
+	| "alreadyHaveSpear"
+	| "useAxe"
+	| "useSpear"
+	| "nothingToHit";
 
 export type ServerMessage =
 	| {
@@ -129,6 +167,8 @@ export type ServerMessage =
 			/** [x, y, choppedAt] for trees that were chopped and may not have regrown. */
 			readonly chopped: readonly (readonly [number, number, number])[];
 			readonly fences: readonly FenceInfo[];
+			/** [x, y, harvestedAt] for food plants harvested recently enough to still be regrowing. */
+			readonly harvested: readonly (readonly [number, number, number])[];
 			/** [x, y, iron mined] for ore rocks that have been mined at all. */
 			readonly ore: readonly (readonly [number, number, number])[];
 			readonly control: ChunkControl;
@@ -141,6 +181,7 @@ export type ServerMessage =
 			readonly choppedAt: number | null;
 			readonly fence: FenceInfo | null;
 			readonly oreMined: number | null;
+			readonly harvestedAt: number | null;
 	  }
 	| {
 			readonly type: "control";
@@ -185,4 +226,18 @@ export type ServerMessage =
 			readonly outgoing: readonly PlayerRef[];
 	  }
 	| { readonly type: "notice"; readonly notice: Notice }
+	/** §8, §9: the receiving player's meters, carried food and tools. */
+	| {
+			readonly type: "status";
+			readonly health: number;
+			readonly food: number;
+			readonly water: number;
+			readonly pantry: FoodCounts;
+			readonly hasSpear: boolean;
+			readonly tool: "axe" | "spear";
+	  }
+	| { readonly type: "creature"; readonly creature: CreatureInfo }
+	| { readonly type: "creatureGone"; readonly id: string }
+	/** After dying, the player starts again here (§8). */
+	| { readonly type: "respawned"; readonly x: number; readonly y: number; readonly facing: Facing }
 	| { readonly type: "rejected"; readonly seq: number; readonly reason: ActionRejectReason };

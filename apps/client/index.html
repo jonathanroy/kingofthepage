@@ -146,6 +146,80 @@
 				font-size: 12px;
 				color: var(--muted);
 			}
+			#status {
+				position: fixed;
+				left: 12px;
+				bottom: 12px;
+				width: 230px;
+				font-size: 13px;
+				z-index: 5;
+				display: grid;
+				gap: 5px;
+			}
+			#status .meter {
+				display: grid;
+				grid-template-columns: 22px 1fr 28px;
+				align-items: center;
+				gap: 6px;
+			}
+			#status .meter b {
+				text-align: right;
+				font-variant-numeric: tabular-nums;
+			}
+			#status .icon {
+				width: 21px;
+				height: 18px;
+			}
+			.bar {
+				height: 10px;
+				border: 2px solid var(--panel-edge);
+				border-radius: 3px;
+				background: var(--panel-inner);
+				overflow: hidden;
+			}
+			.fill {
+				display: block;
+				height: 100%;
+				width: 100%;
+				transition: width 0.4s linear;
+			}
+			.fill.health {
+				background: #e8423f;
+			}
+			.fill.food {
+				background: #ff9f43;
+			}
+			.fill.water {
+				background: #5aa9e6;
+			}
+			.fill.low {
+				animation: pulse 0.8s ease-in-out infinite alternate;
+			}
+			@keyframes pulse {
+				to {
+					opacity: 0.45;
+				}
+			}
+			@media (prefers-reduced-motion: reduce) {
+				.fill,
+				.fill.low {
+					transition: none;
+					animation: none;
+				}
+			}
+			#status .pantry {
+				display: flex;
+				gap: 10px;
+				flex-wrap: wrap;
+				margin-top: 2px;
+			}
+			#status .pantry .icon {
+				width: 21px;
+				height: 18px;
+			}
+			#status .tool-row {
+				font-size: 13px;
+			}
 			#allies {
 				position: fixed;
 				top: 12px;
@@ -304,6 +378,18 @@
 				<span id="hud-pos"></span>
 			</div>
 			<div class="help" id="help"></div>
+		</div>
+		<div id="status" class="panel" hidden>
+			<div class="meter"><img class="icon" id="icon-health" alt="Health" /><div class="bar"><span id="bar-health" class="fill health"></span></div><b id="num-health">100</b></div>
+			<div class="meter"><img class="icon" id="icon-food" alt="Food" /><div class="bar"><span id="bar-food" class="fill food"></span></div><b id="num-food">100</b></div>
+			<div class="meter"><img class="icon" id="icon-water" alt="Water" /><div class="bar"><span id="bar-water" class="fill water"></span></div><b id="num-water">100</b></div>
+			<div class="pantry">
+				<span><img class="icon" id="icon-apple" alt="Apples" /> <b id="food-apple">0</b></span>
+				<span><img class="icon" id="icon-berries" alt="Berries" /> <b id="food-berries">0</b></span>
+				<span><img class="icon" id="icon-potato" alt="Potatoes" /> <b id="food-potato">0</b></span>
+				<span><img class="icon" id="icon-meat" alt="Meat" /> <b id="food-meat">0</b></span>
+			</div>
+			<div class="tool-row"><b id="tool">Axe</b> <span id="tool-hint" class="muted"></span></div>
 		</div>
 		<div id="allies" class="panel" hidden>
 			<form id="ally-form">

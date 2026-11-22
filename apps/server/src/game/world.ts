@@ -2,11 +2,15 @@ import type {
 	ActionRejectReason,
 	ChunkControl,
 	FenceInfo,
+	Notice,
 	PlayerInfo,
 } from "@kotp/shared/protocol";
 import {
 	AllianceBook,
 	type AllyCheck,
+	addFood,
+	agePantry,
+	bearCanClaw,
 	buildFence,
 	type ControllerChange,
 	canEnterTile,
@@ -14,30 +18,50 @@ import {
 	canPlaceFence,
 	canUpgradeFence,
 	chopFence,
+	drainSurvival,
+	drink,
 	ENCLOSURE,
 	type Enclosure,
 	type EnclosureChanges,
+	emptyPantry,
+	FENCE_LEVELS,
 	type Fence,
 	type FenceAt,
 	type FenceLevel,
+	FOOD,
+	FOOD_KINDS,
+	FORAGE,
+	type FoodKind,
+	FULL_SURVIVAL,
 	fenceBuildCost,
 	fillRegion,
+	hurt,
 	improveFence,
 	ironFromHit,
+	isDead,
+	isWalkable,
 	isWalkableFor,
 	LandRegistry,
 	landScores,
 	makeGate,
 	mineGoldPerMinute,
 	needsAllyConfirmation,
+	nextToSpoil,
 	normalizeHandle,
+	nourish,
 	PACE,
+	type Pantry,
 	recomputeOwnerEnclosures,
 	resolveTile,
+	type Survival,
 	settleMineGold,
+	spendWork,
 	type Tile,
 	type TileDiff,
 	type TileView,
+	TOOLS,
+	type Tool,
+	takeOne,
 	woodFromTree,
 } from "@kotp/shared/rules";
 import {
@@ -79,6 +103,11 @@ export type PlayerState = {
 	online: boolean;
 	nextMoveAt: number;
 	nextActionAt: number;
+	/** §8 meters; only advance while online. */
+	survival: Survival;
+	pantry: Pantry;
+	hasSpear: boolean;
+	tool: Tool;
 };
 
 /** Something clients may need to hear about. The game routes these by interest. */
@@ -87,6 +116,17 @@ export type WorldEvent =
 	| { readonly kind: "control"; readonly changes: readonly ControllerChange[] }
 	| { readonly kind: "player"; readonly id: string; readonly fromX: number; readonly fromY: number }
 	| { readonly kind: "inventory"; readonly id: string }
+	/** Meters, food or tools of this player changed (§8, §9). */
+	| { readonly kind: "status"; readonly id: string }
+	| { readonly kind: "notice"; readonly id: string; readonly notice: Notice }
+	/** A creature appeared, moved or was hurt (§9). */
+	| {
+			readonly kind: "creature";
+			readonly id: string;
+			readonly fromX: number;
+			readonly fromY: number;
+	  }
+	| { readonly kind: "creatureGone"; readonly id: string; readonly x: number; readonly y: number }
 	/** §4: tell a fence's owner that an ally started chopping it. */
 	| {
 			readonly kind: "allyChop";
@@ -142,6 +182,8 @@ export class World {
 	private readonly diffsByChunk = new Map<string, Map<string, TileDiffAt>>();
 	private readonly fenceKeys = new Set<string>();
 	private readonly occupancy = new Map<string, number>();
+	/** Set by the wildlife system: players can't walk into a creature (§9). */
+	private creatureAt: (x: number, y: number) => boolean = () => false;
 
 	private readonly dirtyPlayers = new Set<string>();
 	private readonly dirtyTiles = new Map<string, TileCoord>();
@@ -156,7 +198,13 @@ export class World {
 
 	load(snapshot: WorldSnapshot, now: number): void {
 		for (const p of snapshot.players)
-			this.addPlayer({ ...p, online: false, nextMoveAt: 0, nextActionAt: 0 });
+			this.addPlayer({
+				...p,
+				online: false,
+				nextMoveAt: 0,
+				nextActionAt: 0,
+				survival: { health: p.health, food: p.food, water: p.water },
+			});
 		for (const f of snapshot.fences) {
 			this.setDiff(f.x, f.y, {
 				fence: {
@@ -174,6 +222,7 @@ export class World {
 			this.setDiff(c.x, c.y, { choppedAt: c.choppedAt });
 		}
 		for (const o of snapshot.ore) this.setDiff(o.x, o.y, { oreMined: o.mined });
+		for (const f of snapshot.forage) this.setDiff(f.x, f.y, { harvestedAt: f.harvestedAt });
 		const view = this.viewAt(now);
 		const added: Enclosure[] = [];
 		for (const e of snapshot.enclosures) {
@@ -216,6 +265,7 @@ export class World {
 		const chopsSet: { x: number; y: number; choppedAt: number }[] = [];
 		const chopsRemoved: TileCoord[] = [];
 		const oreSet: { x: number; y: number; mined: number }[] = [];
+		const forageSet: { x: number; y: number; harvestedAt: number }[] = [];
 		for (const { x, y } of this.dirtyTiles.values()) {
 			const diff = this.getDiff(x, y);
 			if (diff?.fence) fencesSet.push({ x, y, ...diff.fence });
@@ -224,6 +274,7 @@ export class World {
 			else chopsRemoved.push({ x, y });
 			// Mined ore never resets, so there is nothing to remove.
 			if (diff?.oreMined !== undefined) oreSet.push({ x, y, mined: diff.oreMined });
+			if (diff?.harvestedAt !== undefined) forageSet.push({ x, y, harvestedAt: diff.harvestedAt });
 		}
 		const batch: WriteBatch = {
 			players,
@@ -232,6 +283,7 @@ export class World {
 			chopsSet,
 			chopsRemoved,
 			oreSet,
+			forageSet,
 			enclosuresAdded: [...this.enclosuresAdded.values()],
 			enclosuresRemoved: [...this.enclosuresRemoved],
 			minesSet: [...this.dirtyMines]
@@ -267,15 +319,12 @@ export class World {
 	}
 
 	tileAt(x: number, y: number, now: number): Tile {
-		const key = tileKey(x, y);
-		return resolveTile(
-			this.terrain.terrainAt(x, y),
-			this.getDiff(x, y),
-			now,
-			(this.occupancy.get(key) ?? 0) > 0,
-			this.terrain.mineAt(x, y),
-			this.terrain.oreAt(x, y),
-		);
+		return resolveTile(this.terrain.terrainAt(x, y), this.getDiff(x, y), now, {
+			occupied: (this.occupancy.get(tileKey(x, y)) ?? 0) > 0,
+			mine: this.terrain.mineAt(x, y),
+			ore: this.terrain.oreAt(x, y),
+			forage: this.terrain.forageAt(x, y),
+		});
 	}
 
 	isOccupied(x: number, y: number): boolean {
@@ -329,6 +378,10 @@ export class World {
 			iron: 0,
 			gold: 0,
 			lastSeenAt: input.now,
+			survival: FULL_SURVIVAL,
+			pantry: emptyPantry(),
+			hasSpear: false,
+			tool: "axe",
 			online: false,
 			nextMoveAt: 0,
 			nextActionAt: 0,
@@ -374,7 +427,10 @@ export class World {
 		const turnEvents: WorldEvent[] = turned ? [{ kind: "player", id, fromX: p.x, fromY: p.y }] : [];
 
 		const to = stepToward(p.x, p.y, dir);
-		if (!isWalkableFor(this.tileAt(to.x, to.y, now), id, this.allyCheck(id))) {
+		if (
+			!isWalkableFor(this.tileAt(to.x, to.y, now), id, this.allyCheck(id)) ||
+			this.creatureAt(to.x, to.y)
+		) {
 			return { ok: false, reason: "blocked", events: turnEvents };
 		}
 		if (
@@ -413,11 +469,12 @@ export class World {
 		const target = stepToward(p.x, p.y, p.facing);
 		const tile = this.tileAt(target.x, target.y, now);
 		p.nextActionAt = now + PACE.actionIntervalMs;
+		if (p.tool !== "axe") return { ok: false, reason: "useAxe", events: [] };
 
 		if (tile.kind === "tree") {
 			this.updateDiff(target.x, target.y, { choppedAt: now });
 			p.wood += woodFromTree(this.deps.random());
-			this.dirtyPlayers.add(id);
+			this.work(p);
 			return {
 				ok: true,
 				events: [
@@ -435,7 +492,7 @@ export class World {
 			const mined = tile.capacity - tile.remaining + iron;
 			this.updateDiff(target.x, target.y, { oreMined: mined });
 			p.iron += iron;
-			this.dirtyPlayers.add(id);
+			this.work(p);
 			return {
 				ok: true,
 				events: [
@@ -459,6 +516,7 @@ export class World {
 		if (needsAllyConfirmation(fence, p.id, allies) && !confirmAlly) {
 			return { ok: false, reason: "allyConfirmRequired", events: [] };
 		}
+		this.work(p);
 		const events: WorldEvent[] = [{ kind: "tile", ...at }];
 		const reportKey = `${p.id}|${tileKey(at.x, at.y)}`;
 		if (allies(fence.ownerId) && !this.allyChopsReported.has(reportKey)) {
@@ -492,7 +550,7 @@ export class World {
 		if (!check.ok) return { ok: false, reason: check.reason, events: [] };
 		p.wood -= check.cost;
 		p.iron -= check.iron;
-		this.dirtyPlayers.add(id);
+		this.work(p);
 		this.updateDiff(target.x, target.y, { fence: improveFence(tile.fence) });
 		return {
 			ok: true,
@@ -536,6 +594,193 @@ export class World {
 		this.dirtyAlliances.set(`${x}|${y}`, { a: x, b: y, formed });
 	}
 
+	// ---------- Survival (§8) and tools (§9) ----------
+
+	setCreatureLookup(lookup: (x: number, y: number) => boolean): void {
+		this.creatureAt = lookup;
+	}
+
+	/** Every work action makes the player hungrier and thirstier. */
+	private work(p: PlayerState): void {
+		p.survival = spendWork(p.survival);
+		this.dirtyPlayers.add(p.id);
+	}
+
+	/** Spear thrusts count as work too; the wildlife system calls this. */
+	spendWork(id: string): void {
+		this.work(this.requirePlayer(id));
+	}
+
+	/** Drink from a lake, or harvest apples, berries or potatoes on the faced tile. */
+	interact(id: string, now: number): ActionResult {
+		const p = this.requirePlayer(id);
+		const at = stepToward(p.x, p.y, p.facing);
+		const tile = this.tileAt(at.x, at.y, now);
+		p.nextActionAt = now + PACE.actionIntervalMs;
+		if (tile.kind === "water") {
+			p.survival = drink(p.survival);
+			this.dirtyPlayers.add(id);
+			return { ok: true, events: [{ kind: "status", id }] };
+		}
+		const forage =
+			tile.kind === "tree" && tile.apples !== undefined
+				? { kind: "apple" as const, ready: tile.apples, food: "apple" as const }
+				: tile.kind === "bush"
+					? { kind: "berry" as const, ready: tile.ready, food: "berries" as const }
+					: tile.kind === "potato"
+						? { kind: "potato" as const, ready: tile.ready, food: "potato" as const }
+						: null;
+		if (!forage) return { ok: false, reason: "nothingToInteract", events: [] };
+		if (!forage.ready) return { ok: false, reason: "notReady", events: [] };
+		const { pantry, added } = addFood(p.pantry, forage.food, FORAGE[forage.kind].yield);
+		if (added === 0) return { ok: false, reason: "bagFull", events: [] };
+		p.pantry = pantry;
+		this.updateDiff(at.x, at.y, { harvestedAt: now });
+		this.work(p);
+		return {
+			ok: true,
+			events: [
+				{ kind: "tile", ...at },
+				{ kind: "status", id },
+			],
+		};
+	}
+
+	/** §8: eat the carried food closest to spoiling. */
+	eat(id: string): ActionResult {
+		const p = this.requirePlayer(id);
+		const kind = nextToSpoil(p.pantry);
+		if (!kind) return { ok: false, reason: "nothingToEat", events: [] };
+		p.pantry = takeOne(p.pantry, kind);
+		p.survival = nourish(p.survival, FOOD.kinds[kind].restores);
+		this.dirtyPlayers.add(id);
+		return {
+			ok: true,
+			events: [
+				{ kind: "status", id },
+				{ kind: "notice", id, notice: { kind: "ate", food: kind } },
+			],
+		};
+	}
+
+	craftSpear(id: string): ActionResult {
+		const p = this.requirePlayer(id);
+		if (p.hasSpear) return { ok: false, reason: "alreadyHaveSpear", events: [] };
+		if (p.wood < TOOLS.spearWood) return { ok: false, reason: "notEnoughWood", events: [] };
+		if (p.iron < TOOLS.spearIron) return { ok: false, reason: "notEnoughIron", events: [] };
+		p.wood -= TOOLS.spearWood;
+		p.iron -= TOOLS.spearIron;
+		p.hasSpear = true;
+		p.tool = "spear";
+		this.dirtyPlayers.add(id);
+		return {
+			ok: true,
+			events: [
+				{ kind: "inventory", id },
+				{ kind: "status", id },
+			],
+		};
+	}
+
+	selectTool(id: string, tool: Tool): ActionResult {
+		const p = this.requirePlayer(id);
+		if (tool === "spear" && !p.hasSpear) return { ok: false, reason: "noSpear", events: [] };
+		p.tool = tool;
+		this.dirtyPlayers.add(id);
+		return { ok: true, events: [{ kind: "status", id }] };
+	}
+
+	/** Food gained from hunting; returns how much fit in the bag. */
+	addFood(id: string, kind: FoodKind, count: number): number {
+		const p = this.requirePlayer(id);
+		const result = addFood(p.pantry, kind, count);
+		p.pantry = result.pantry;
+		this.dirtyPlayers.add(id);
+		return result.added;
+	}
+
+	/**
+	 * Advances an online player's meters and food by `elapsedMs`. Called from the game loop
+	 * for online players only, so everything pauses while offline (§8).
+	 */
+	tickSurvival(id: string, elapsedMs: number): { dead: boolean; spoiled: FoodKind[] } {
+		const p = this.requirePlayer(id);
+		const before = p.pantry;
+		p.survival = drainSurvival(p.survival, elapsedMs);
+		p.pantry = agePantry(p.pantry, elapsedMs);
+		this.dirtyPlayers.add(id);
+		const spoiled = FOOD_KINDS.filter((k) => p.pantry[k].count < before[k].count);
+		return { dead: isDead(p.survival), spoiled };
+	}
+
+	/** A bear bite; returns true when it was fatal. */
+	hurtPlayer(id: string, damage: number): boolean {
+		const p = this.requirePlayer(id);
+		p.survival = hurt(p.survival, damage);
+		this.dirtyPlayers.add(id);
+		return isDead(p.survival);
+	}
+
+	/**
+	 * §8 Death: start again at `at` with full meters, losing everything carried. Land,
+	 * walls, gold and alliances stay; the axe is never lost.
+	 */
+	respawn(id: string, at: TileCoord): WorldEvent[] {
+		const p = this.requirePlayer(id);
+		const from = { x: p.x, y: p.y };
+		this.relocate(id, at.x, at.y, "down");
+		p.wood = 0;
+		p.iron = 0;
+		p.pantry = emptyPantry();
+		p.hasSpear = false;
+		p.tool = "axe";
+		p.survival = FULL_SURVIVAL;
+		return [
+			{ kind: "player", id, fromX: from.x, fromY: from.y },
+			{ kind: "inventory", id },
+			{ kind: "status", id },
+		];
+	}
+
+	/** Open, unoccupied ground a creature may step onto. */
+	isOpenForCreature(x: number, y: number, now: number): boolean {
+		return isWalkable(this.tileAt(x, y, now)) && !this.isOccupied(x, y);
+	}
+
+	/**
+	 * §9: a zombie bear claws a fence. Bears only harm levels 1-3; a broken fence refunds
+	 * nobody, and its owner's enclosures are recomputed like any breach.
+	 */
+	clawFence(x: number, y: number, damage: number, now: number): WorldEvent[] {
+		const tile = this.tileAt(x, y, now);
+		if (tile.kind !== "fence" || !bearCanClaw(tile.fence)) return [];
+		const fence = tile.fence;
+		const needed = FENCE_LEVELS[fence.level - 1]?.chopsToBreak ?? 1;
+		const next = fence.damage + damage;
+		if (next < needed) {
+			this.updateDiff(x, y, { fence: { ...fence, damage: next } });
+			return [{ kind: "tile", x, y }];
+		}
+		this.updateDiff(x, y, { fence: undefined });
+		this.clearAllyChopReports({ x, y });
+		return [{ kind: "tile", x, y }, ...this.recomputeEnclosures(fence.ownerId, { x, y }, now)];
+	}
+
+	statusOf(p: PlayerState) {
+		const counts = Object.fromEntries(FOOD_KINDS.map((k) => [k, p.pantry[k].count])) as Record<
+			FoodKind,
+			number
+		>;
+		return {
+			health: Math.round(p.survival.health * 10) / 10,
+			food: Math.round(p.survival.food * 10) / 10,
+			water: Math.round(p.survival.water * 10) / 10,
+			pantry: counts,
+			hasSpear: p.hasSpear,
+			tool: p.tool,
+		};
+	}
+
 	build(id: string, now: number): ActionResult {
 		const p = this.requirePlayer(id);
 		const target = stepToward(p.x, p.y, p.facing);
@@ -546,7 +791,7 @@ export class World {
 		if (!placement.ok) return { ok: false, reason: placement.reason, events: [] };
 
 		p.wood -= fenceBuildCost();
-		this.dirtyPlayers.add(id);
+		this.work(p);
 		this.updateDiff(target.x, target.y, { fence: buildFence(id) });
 		const control = this.recomputeEnclosures(id, target, now);
 		return {
@@ -564,15 +809,18 @@ export class World {
 		chopped: [number, number, number][];
 		fences: FenceInfo[];
 		ore: [number, number, number][];
+		harvested: [number, number, number][];
 		control: ChunkControl;
 		handles: Record<string, string>;
 	} {
 		const chopped: [number, number, number][] = [];
 		const fences: FenceInfo[] = [];
 		const ore: [number, number, number][] = [];
+		const harvested: [number, number, number][] = [];
 		for (const d of this.diffsByChunk.get(chunkKey(cx, cy))?.values() ?? []) {
 			if (d.choppedAt !== undefined) chopped.push([d.x, d.y, d.choppedAt]);
 			if (d.oreMined !== undefined) ore.push([d.x, d.y, d.oreMined]);
+			if (d.harvestedAt !== undefined) harvested.push([d.x, d.y, d.harvestedAt]);
 			if (d.fence) fences.push(fenceInfo(d.x, d.y, d.fence));
 		}
 		const owners: string[] = [];
@@ -594,6 +842,7 @@ export class World {
 			chopped,
 			fences,
 			ore,
+			harvested,
 			control: { owners, cells: any ? cells : null },
 			handles: this.handlesFor(handleIds),
 		};
@@ -602,12 +851,18 @@ export class World {
 	tileSnapshot(
 		x: number,
 		y: number,
-	): { choppedAt: number | null; fence: FenceInfo | null; oreMined: number | null } {
+	): {
+		choppedAt: number | null;
+		fence: FenceInfo | null;
+		oreMined: number | null;
+		harvestedAt: number | null;
+	} {
 		const d = this.getDiff(x, y);
 		return {
 			choppedAt: d?.choppedAt ?? null,
 			fence: d?.fence ? fenceInfo(x, y, d.fence) : null,
 			oreMined: d?.oreMined ?? null,
+			harvestedAt: d?.harvestedAt ?? null,
 		};
 	}
 
@@ -647,7 +902,7 @@ export class World {
 	// ---------- Gold mines (§6) ----------
 
 	/**
-	 * §8: when a mine's controller changes, pay out the old controller first, then start
+	 * §10: when a mine's controller changes, pay out the old controller first, then start
 	 * the new one's clock. Returns inventory events for everyone whose income changed.
 	 */
 	private updateMineControl(changes: readonly ControllerChange[], now: number): WorldEvent[] {
@@ -766,9 +1021,14 @@ export class World {
 			...(merged.choppedAt !== undefined ? { choppedAt: merged.choppedAt } : {}),
 			...(merged.fence ? { fence: merged.fence } : {}),
 			...(merged.oreMined !== undefined ? { oreMined: merged.oreMined } : {}),
+			...(merged.harvestedAt !== undefined ? { harvestedAt: merged.harvestedAt } : {}),
 		};
-		if (clean.choppedAt === undefined && !clean.fence && clean.oreMined === undefined)
-			chunk.delete(key);
+		const empty =
+			clean.choppedAt === undefined &&
+			!clean.fence &&
+			clean.oreMined === undefined &&
+			clean.harvestedAt === undefined;
+		if (empty) chunk.delete(key);
 		else chunk.set(key, clean);
 		if (clean.fence) this.fenceKeys.add(key);
 		else this.fenceKeys.delete(key);
@@ -777,19 +1037,26 @@ export class World {
 	private updateDiff(
 		x: number,
 		y: number,
-		patch: { choppedAt?: number; fence?: Fence | undefined; oreMined?: number },
+		patch: {
+			choppedAt?: number;
+			fence?: Fence | undefined;
+			oreMined?: number;
+			harvestedAt?: number;
+		},
 	): void {
 		const current = this.getDiff(x, y);
 		const next: TileDiff = {
 			...(current?.choppedAt !== undefined ? { choppedAt: current.choppedAt } : {}),
 			...(current?.fence ? { fence: current.fence } : {}),
 			...(current?.oreMined !== undefined ? { oreMined: current.oreMined } : {}),
+			...(current?.harvestedAt !== undefined ? { harvestedAt: current.harvestedAt } : {}),
 		};
 		const merged = { ...next, ...patch };
 		const clean: TileDiff = {
 			...(merged.choppedAt !== undefined ? { choppedAt: merged.choppedAt } : {}),
 			...(merged.fence ? { fence: merged.fence } : {}),
 			...(merged.oreMined !== undefined ? { oreMined: merged.oreMined } : {}),
+			...(merged.harvestedAt !== undefined ? { harvestedAt: merged.harvestedAt } : {}),
 		};
 		// Replace rather than merge so a removed fence really disappears.
 		const { cx, cy } = chunkOfTile(x, y);
@@ -820,6 +1087,12 @@ function toStoredPlayer(p: PlayerState): StoredPlayer {
 		wood: p.wood,
 		iron: p.iron,
 		gold: p.gold,
+		health: p.survival.health,
+		food: p.survival.food,
+		water: p.survival.water,
+		pantry: p.pantry,
+		hasSpear: p.hasSpear,
+		tool: p.tool,
 		createdAt: p.createdAt,
 		lastSeenAt: p.lastSeenAt,
 	};

@@ -16,8 +16,8 @@ describe("resolveTile", () => {
 	it("waits for the stump to be empty before regrowing (§2)", () => {
 		const diff = { choppedAt: T0 };
 		const later = T0 + TREE.regrowDelayMs * 2;
-		expect(resolveTile("tree", diff, later, true).kind).toBe("stump");
-		expect(resolveTile("tree", diff, later, false).kind).toBe("tree");
+		expect(resolveTile("tree", diff, later, { occupied: true }).kind).toBe("stump");
+		expect(resolveTile("tree", diff, later, { occupied: false }).kind).toBe("tree");
 	});
 
 	it("keeps a fence on a stump even after the regrow delay", () => {
@@ -58,12 +58,12 @@ describe("walls and walkability", () => {
 	});
 
 	it("turns an ore rock into rubble once emptied, for good (§2 Iron ore)", () => {
-		expect(resolveTile("grass", { oreMined: 30 }, 0, false, null, 100)).toEqual({
+		expect(resolveTile("grass", { oreMined: 30 }, 0, { ore: 100 })).toEqual({
 			kind: "ore",
 			remaining: 70,
 			capacity: 100,
 		});
-		const rubble = resolveTile("grass", { oreMined: 100 }, 0, false, null, 100);
+		const rubble = resolveTile("grass", { oreMined: 100 }, 0, { ore: 100 });
 		expect(rubble).toEqual({ kind: "rubble" });
 		expect(isWalkable(rubble)).toBe(true);
 		expect(isWalkable({ kind: "ore", remaining: 1, capacity: 100 })).toBe(false);

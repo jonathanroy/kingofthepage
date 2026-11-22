@@ -30,6 +30,9 @@ async function startGame(): Promise<void> {
 			if (world.me) hud.update(world.me);
 		},
 		confirm: (text) => hud.confirm(text),
+		onStatusChanged: () => {
+			if (world.status) hud.updateStatus(world.status);
+		},
 	});
 	game = new Phaser.Game({
 		type: Phaser.AUTO,

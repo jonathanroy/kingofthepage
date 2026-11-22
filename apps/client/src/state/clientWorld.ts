@@ -1,4 +1,11 @@
-import type { FenceInfo, PlayerInfo, PlayerRef, ServerMessage } from "@kotp/shared/protocol";
+import type {
+	CreatureInfo,
+	FenceInfo,
+	FoodCounts,
+	PlayerInfo,
+	PlayerRef,
+	ServerMessage,
+} from "@kotp/shared/protocol";
 import {
 	type AllyCheck,
 	type Fence,
@@ -55,6 +62,19 @@ export type Changes = {
 	readonly playersRemoved: Set<string>;
 	meChanged: boolean;
 	alliancesChanged: boolean;
+	readonly creatures: Set<string>;
+	readonly creaturesRemoved: Set<string>;
+	statusChanged: boolean;
+};
+
+/** §8, §9: the local player's meters, carried food and tools. */
+export type Status = {
+	health: number;
+	food: number;
+	water: number;
+	pantry: FoodCounts;
+	hasSpear: boolean;
+	tool: "axe" | "spear";
 };
 
 function emptyChanges(): Changes {
@@ -67,6 +87,9 @@ function emptyChanges(): Changes {
 		playersRemoved: new Set(),
 		meChanged: false,
 		alliancesChanged: false,
+		creatures: new Set(),
+		creaturesRemoved: new Set(),
+		statusChanged: false,
 	};
 }
 
@@ -87,6 +110,8 @@ export class ClientWorld {
 		outgoing: [],
 	};
 	readonly isAlly: AllyCheck = (id) => this.alliances.allies.some((a) => a.id === id);
+	readonly creatures = new Map<string, CreatureInfo>();
+	status: Status | null = null;
 	private serverOffset = 0;
 	private pending: PendingMove[] = [];
 	private changes = emptyChanges();
@@ -127,7 +152,7 @@ export class ClientWorld {
 				this.applyChunk(msg);
 				break;
 			case "tile":
-				this.applyTile(msg.x, msg.y, msg.choppedAt, msg.fence, msg.oreMined);
+				this.applyTile(msg.x, msg.y, msg.choppedAt, msg.fence, msg.oreMined, msg.harvestedAt);
 				break;
 			case "control":
 				for (const [id, h] of Object.entries(msg.handles)) this.handles.set(id, h);
@@ -170,6 +195,28 @@ export class ClientWorld {
 					this.handles.set(r.id, r.handle);
 				this.changes.alliancesChanged = true;
 				break;
+			case "status": {
+				const { type: _type, ...status } = msg;
+				this.status = status;
+				this.changes.statusChanged = true;
+				break;
+			}
+			case "creature":
+				this.creatures.set(msg.creature.id, msg.creature);
+				this.changes.creatures.add(msg.creature.id);
+				break;
+			case "creatureGone":
+				if (this.creatures.delete(msg.id)) this.changes.creaturesRemoved.add(msg.id);
+				break;
+			case "respawned":
+				if (this.me) {
+					this.me.x = msg.x;
+					this.me.y = msg.y;
+					this.me.facing = msg.facing;
+					this.pending = [];
+					this.changes.meChanged = true;
+				}
+				break;
 			case "joinRejected":
 			case "rejected":
 			case "notice":
@@ -193,14 +240,12 @@ export class ClientWorld {
 
 	tileAt(x: number, y: number): Tile {
 		if (!this.terrain) return { kind: "water" };
-		return resolveTile(
-			this.terrain.terrainAt(x, y),
-			this.diffAt(x, y),
-			this.serverNow(),
-			this.isOccupied(x, y),
-			this.terrain.mineAt(x, y),
-			this.terrain.oreAt(x, y),
-		);
+		return resolveTile(this.terrain.terrainAt(x, y), this.diffAt(x, y), this.serverNow(), {
+			occupied: this.isOccupied(x, y),
+			mine: this.terrain.mineAt(x, y),
+			ore: this.terrain.oreAt(x, y),
+			forage: this.terrain.forageAt(x, y),
+		});
 	}
 
 	controllerAt(x: number, y: number): string | null {
@@ -243,7 +288,8 @@ export class ClientWorld {
 		me.facing = dir;
 		this.changes.meChanged = true;
 		const to = stepToward(me.x, me.y, dir);
-		if (!this.isLoaded(to.x, to.y) || !isWalkableFor(this.tileAt(to.x, to.y), me.id, this.isAlly)) {
+		const walkable = isWalkableFor(this.tileAt(to.x, to.y), me.id, this.isAlly);
+		if (!this.isLoaded(to.x, to.y) || !walkable || this.creatureAt(to.x, to.y)) {
 			return;
 		}
 		// Approximates §5 Access with controllers only; the server decides with full enclosures.
@@ -280,6 +326,10 @@ export class ClientWorld {
 		const key = chunkKey(msg.cx, msg.cy);
 		const chunk: ChunkData = { cx: msg.cx, cy: msg.cy, diffs: new Map(), control: new Map() };
 		for (const [x, y, choppedAt] of msg.chopped) chunk.diffs.set(tileKey(x, y), { choppedAt });
+		for (const [x, y, harvestedAt] of msg.harvested) {
+			const k = tileKey(x, y);
+			chunk.diffs.set(k, { ...chunk.diffs.get(k), harvestedAt });
+		}
 		for (const [x, y, mined] of msg.ore) {
 			const k = tileKey(x, y);
 			chunk.diffs.set(k, { ...chunk.diffs.get(k), oreMined: mined });
@@ -312,6 +362,7 @@ export class ClientWorld {
 		choppedAt: number | null,
 		fence: FenceInfo | null,
 		oreMined: number | null,
+		harvestedAt: number | null,
 	): void {
 		const chunk = this.chunkOf(x, y);
 		if (!chunk) return;
@@ -320,8 +371,14 @@ export class ClientWorld {
 			...(choppedAt !== null ? { choppedAt } : {}),
 			...(fence ? { fence: toFence(fence) } : {}),
 			...(oreMined !== null ? { oreMined } : {}),
+			...(harvestedAt !== null ? { harvestedAt } : {}),
 		};
-		if (diff.choppedAt === undefined && !diff.fence && diff.oreMined === undefined) {
+		const empty =
+			diff.choppedAt === undefined &&
+			!diff.fence &&
+			diff.oreMined === undefined &&
+			diff.harvestedAt === undefined;
+		if (empty) {
 			chunk.diffs.delete(key);
 		} else chunk.diffs.set(key, diff);
 		this.changes.tiles.add(key);
@@ -351,6 +408,11 @@ export class ClientWorld {
 		for (const [id, p] of this.players) {
 			if (!this.isLoaded(p.x, p.y)) this.removePlayer(id);
 		}
+		for (const [id, c] of this.creatures) {
+			if (this.isLoaded(c.x, c.y)) continue;
+			this.creatures.delete(id);
+			this.changes.creaturesRemoved.add(id);
+		}
 	}
 
 	private removePlayer(id: string): void {
@@ -364,6 +426,11 @@ export class ClientWorld {
 
 	private diffAt(x: number, y: number): TileDiff | undefined {
 		return this.chunkOf(x, y)?.diffs.get(tileKey(x, y));
+	}
+
+	creatureAt(x: number, y: number): CreatureInfo | null {
+		for (const c of this.creatures.values()) if (c.x === x && c.y === y) return c;
+		return null;
 	}
 
 	private isOccupied(x: number, y: number): boolean {

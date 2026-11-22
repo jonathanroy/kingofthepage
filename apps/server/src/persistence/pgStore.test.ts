@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { emptyPantry } from "@kotp/shared/rules";
 import { afterAll, describe, expect, it } from "vitest";
 import { PgStore } from "./pgStore";
 
@@ -46,6 +47,12 @@ describe.skipIf(!url)("PgStore", () => {
 			wood: 3,
 			iron: 7,
 			gold: 1.5,
+			health: 80,
+			food: 55.5,
+			water: 40,
+			pantry: { ...emptyPantry(), apple: { count: 2, spoil: 1000 } },
+			hasSpear: true,
+			tool: "spear" as const,
 			createdAt: 1000,
 			lastSeenAt: 2000,
 		};
@@ -67,6 +74,7 @@ describe.skipIf(!url)("PgStore", () => {
 			chopsSet: [{ x: 900_002, y: 1, choppedAt: 1234 }],
 			chopsRemoved: [],
 			oreSet: [{ x: 900_003, y: 1, mined: 12 }],
+			forageSet: [{ x: 900_004, y: 1, harvestedAt: 4321 }],
 			enclosuresAdded: [{ id: enclosureId, ownerId: id, createdAt: 5, anchorX: 1, anchorY: 2 }],
 			enclosuresRemoved: [],
 			alliancesSet: [],
@@ -82,6 +90,7 @@ describe.skipIf(!url)("PgStore", () => {
 			chopsSet: [{ x: 900_002, y: 1, choppedAt: 5678 }],
 			chopsRemoved: [],
 			oreSet: [{ x: 900_003, y: 1, mined: 30 }],
+			forageSet: [],
 			enclosuresAdded: [],
 			enclosuresRemoved: [enclosureId],
 			alliancesSet: [],
@@ -94,7 +103,14 @@ describe.skipIf(!url)("PgStore", () => {
 		expect(snap.fences.find((f) => f.x === 900_001)).toBeUndefined();
 		expect(snap.chops.find((c) => c.x === 900_002)?.choppedAt).toBe(5678);
 		expect(snap.ore.find((o) => o.x === 900_003)?.mined).toBe(30);
-		expect(snap.players.find((p) => p.id === id)?.iron).toBe(7);
+		expect(snap.forage.find((f) => f.x === 900_004)?.harvestedAt).toBe(4321);
+		expect(snap.players.find((p) => p.id === id)).toMatchObject({
+			iron: 7,
+			food: 55.5,
+			hasSpear: true,
+			tool: "spear",
+			pantry: { apple: { count: 2, spoil: 1000 } },
+		});
 		expect(snap.enclosures.find((e) => e.id === enclosureId)).toBeUndefined();
 	});
 });

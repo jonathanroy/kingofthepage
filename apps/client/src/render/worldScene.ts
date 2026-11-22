@@ -30,13 +30,40 @@ export type SceneDeps = {
 	readonly send: (msg: ClientMessage) => void;
 	readonly nextSeq: () => number;
 	readonly onMeChanged: () => void;
+	/** Meters, food or tools changed (§8, §9). */
+	readonly onStatusChanged: () => void;
 	/** Shows the §4 warning before chopping an ally's fence. */
 	readonly confirm: (text: string) => Promise<boolean>;
 };
 
-type Action = "chop" | "build" | "upgrade" | "makeGate";
+type Action =
+	| "chop"
+	| "build"
+	| "upgrade"
+	| "makeGate"
+	| "interact"
+	| "eat"
+	| "craftSpear"
+	| "switchTool";
 type Input = Direction | Action;
-const ACTIONS: readonly string[] = ["chop", "build", "upgrade", "makeGate"];
+const ACTIONS: readonly Action[] = [
+	"chop",
+	"build",
+	"upgrade",
+	"makeGate",
+	"interact",
+	"eat",
+	"craftSpear",
+	"switchTool",
+];
+
+type CreatureView = {
+	readonly kind: "rabbit" | "deer" | "bear";
+	readonly sprite: Phaser.GameObjects.Image;
+	readonly hpBar: Phaser.GameObjects.Graphics;
+	hp: number;
+	moving: boolean;
+};
 
 type FenceView = {
 	readonly img: Phaser.GameObjects.Image;
@@ -94,7 +121,13 @@ export class WorldScene extends Phaser.Scene {
 		build: Phaser.Input.Keyboard.Key;
 		upgrade: Phaser.Input.Keyboard.Key;
 		makeGate: Phaser.Input.Keyboard.Key;
+		interact: Phaser.Input.Keyboard.Key;
+		eat: Phaser.Input.Keyboard.Key;
+		craftSpear: Phaser.Input.Keyboard.Key;
+		switchTool: Phaser.Input.Keyboard.Key;
 	};
+	private readonly creatureViews = new Map<string, CreatureView>();
+	private lastPantry: Record<string, number> | null = null;
 	private nextMoveAt = 0;
 	/** Holding Space keeps chopping at the server's action pace: walls take hundreds of chops. */
 	private nextHeldChopAt = 0;
@@ -130,6 +163,10 @@ export class WorldScene extends Phaser.Scene {
 			build: kb.addKey(K.F),
 			upgrade: kb.addKey(K.U),
 			makeGate: kb.addKey(K.G),
+			interact: kb.addKey(K.E),
+			eat: kb.addKey(K.X),
+			craftSpear: kb.addKey(K.C),
+			switchTool: kb.addKey(K.Q),
 		};
 		// Key "down" events, not per-frame polling: Phaser clears a key's just-pressed
 		// flag on release, so a tap shorter than a frame would otherwise be lost.
@@ -139,7 +176,7 @@ export class WorldScene extends Phaser.Scene {
 		for (const dir of DIRECTIONS) {
 			for (const key of this.keys[dir]) key.on("down", () => queue(dir));
 		}
-		for (const action of ["chop", "build", "upgrade", "makeGate"] as const) {
+		for (const action of ACTIONS) {
 			this.keys[action].on("down", () => {
 				queue(action);
 				if (action === "chop") this.nextHeldChopAt = this.time.now + PACE.actionIntervalMs;
@@ -182,8 +219,12 @@ export class WorldScene extends Phaser.Scene {
 			if (this.waitingForConfirm) return;
 			if (next === "chop") {
 				if (!this.sendChop()) return;
-			} else if (next !== undefined && ACTIONS.includes(next)) {
-				this.deps.send({ type: next as Exclude<Action, "chop">, seq: this.deps.nextSeq() });
+			} else if (next === "switchTool") {
+				const tool = this.deps.world.status?.tool === "spear" ? "axe" : "spear";
+				this.deps.send({ type: "selectTool", tool, seq: this.deps.nextSeq() });
+			} else if (next !== undefined && (ACTIONS as readonly string[]).includes(next)) {
+				const type = next as Exclude<Action, "chop" | "switchTool">;
+				this.deps.send({ type, seq: this.deps.nextSeq() });
 			} else if (next !== undefined) {
 				const dir = next as Direction;
 				if (time < this.nextMoveAt) return;
@@ -275,6 +316,9 @@ export class WorldScene extends Phaser.Scene {
 		for (const id of changes.players) this.updatePlayer(id);
 		if (changes.meChanged) this.updateMe();
 		if (changes.alliancesChanged) this.refreshLabels();
+		for (const id of changes.creaturesRemoved) this.destroyCreature(id);
+		for (const id of changes.creatures) this.updateCreature(id);
+		if (changes.statusChanged) this.onStatus();
 	}
 
 	// ---------- Ground ----------
@@ -627,6 +671,8 @@ export class WorldScene extends Phaser.Scene {
 		for (const view of all) {
 			view.body.setFrame(playerFrame(view.dir, view.moving ? step : 0));
 		}
+		const creatureStep = Math.floor(time / 180) % 2;
+		for (const v of this.creatureViews.values()) v.sprite.setFrame(v.moving ? creatureStep : 0);
 	}
 
 	private updatePlayer(id: string): void {
@@ -666,6 +712,86 @@ export class WorldScene extends Phaser.Scene {
 		this.deps.onMeChanged();
 	}
 
+	// ---------- Creatures (§9) ----------
+
+	private updateCreature(id: string): void {
+		const c = this.deps.world.creatures.get(id);
+		if (!c) return;
+		let view = this.creatureViews.get(id);
+		if (!view) {
+			const sprite = this.add
+				.image(c.x * TILE, c.y * TILE, `creature-${c.kind}`, 0)
+				.setOrigin(0)
+				.setDepth(DEPTH.player);
+			const hpBar = this.add.graphics().setDepth(DEPTH.fx);
+			view = { kind: c.kind, sprite, hpBar, hp: c.hp, moving: false };
+			this.creatureViews.set(id, view);
+		}
+		const v = view;
+		// Sprites face left; mirror them when walking right.
+		if (c.facing === "right") v.sprite.setFlipX(true);
+		if (c.facing === "left") v.sprite.setFlipX(false);
+		if (c.hp < v.hp) {
+			v.sprite.setTint(0xff6060);
+			this.time.delayedCall(120, () => {
+				if (v.sprite.active) v.sprite.clearTint();
+			});
+		}
+		v.hp = c.hp;
+		const tx = c.x * TILE;
+		const ty = c.y * TILE;
+		if (v.sprite.x !== tx || v.sprite.y !== ty) {
+			this.tweens.killTweensOf(v.sprite);
+			v.moving = true;
+			const duration = c.kind === "bear" ? 600 : c.kind === "deer" ? 360 : 420;
+			this.tweens.add({
+				targets: v.sprite,
+				x: tx,
+				y: ty,
+				duration,
+				onUpdate: () => this.drawHpBar(v, v.hp, c.maxHp),
+				onComplete: () => {
+					v.moving = false;
+				},
+			});
+		}
+		this.drawHpBar(v, c.hp, c.maxHp);
+	}
+
+	/** Bears always show their health; animals only once hurt. */
+	private drawHpBar(v: CreatureView, hp: number, max: number): void {
+		const g = v.hpBar;
+		g.clear();
+		if (v.kind !== "bear" && hp >= max) return;
+		const x = v.sprite.x;
+		const y = v.sprite.y;
+		g.fillStyle(0x2b2233, 1).fillRect(x + 1, y - 3, 14, 3);
+		g.fillStyle(0xe8423f, 1).fillRect(x + 2, y - 2, Math.max(1, Math.round((12 * hp) / max)), 1);
+	}
+
+	private destroyCreature(id: string): void {
+		const v = this.creatureViews.get(id);
+		if (!v) return;
+		v.sprite.destroy();
+		v.hpBar.destroy();
+		this.creatureViews.delete(id);
+	}
+
+	/** HUD refresh, plus "+N" pop-ups when food lands in the bag. */
+	private onStatus(): void {
+		const status = this.deps.world.status;
+		if (!status) return;
+		const pantry = { ...status.pantry };
+		if (this.lastPantry) {
+			for (const food of ["apple", "berries", "potato", "meat"] as const) {
+				const gained = pantry[food] - (this.lastPantry[food] ?? 0);
+				if (gained > 0) this.floatGain(`+${gained}`, `food-${food}`);
+			}
+		}
+		this.lastPantry = pantry;
+		this.deps.onStatusChanged();
+	}
+
 	// ---------- Effects ----------
 
 	private swingAxe(): void {
@@ -679,6 +805,27 @@ export class WorldScene extends Phaser.Scene {
 			up: [10, -2, false],
 		};
 		const [ox, oy, flip] = offsets[me.facing];
+		if (this.deps.world.status?.tool === "spear") {
+			// Spear: a quick thrust toward the faced tile.
+			const angle = { right: 0, left: 180, down: 90, up: -90 }[me.facing];
+			const spear = this.add
+				.image(view.container.x + 8, view.container.y + 9, "spear")
+				.setOrigin(0, 0.5)
+				.setAngle(angle)
+				.setDepth(DEPTH.fx);
+			const reach = 6;
+			const dx = me.facing === "right" ? reach : me.facing === "left" ? -reach : 0;
+			const dy = me.facing === "down" ? reach : me.facing === "up" ? -reach : 0;
+			this.tweens.add({
+				targets: spear,
+				x: spear.x + dx,
+				y: spear.y + dy,
+				yoyo: true,
+				duration: 90,
+				onComplete: () => spear.destroy(),
+			});
+			return;
+		}
 		const axe = this.add
 			.image(view.container.x + ox, view.container.y + oy, "axe")
 			.setOrigin(0)
@@ -743,7 +890,7 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	/** "+2" with an icon rising above your head: wood from a chop, gold from your mines. */
-	private floatGain(text: string, icon: "log" | "coin" | "ingot"): void {
+	private floatGain(text: string, icon: string): void {
 		const view = this.me;
 		if (!view) return;
 		const x = view.container.x + 2;

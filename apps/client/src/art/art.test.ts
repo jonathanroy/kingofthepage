@@ -66,6 +66,16 @@ describe("ground keys", () => {
 	});
 });
 
+describe("forage keys (§8)", () => {
+	it("distinguishes ripe and harvested plants", () => {
+		const base = lookup(["T"]);
+		expect(groundKey({ kind: "tree", apples: true }, 0, 0, base).slice(0, 2)).toBe("A1");
+		expect(groundKey({ kind: "tree", apples: false }, 0, 0, base).slice(0, 2)).toBe("A0");
+		expect(groundKey({ kind: "bush", ready: true }, 0, 0, base).slice(0, 2)).toBe("b1");
+		expect(groundKey({ kind: "potato", ready: false }, 0, 0, base).slice(0, 2)).toBe("q0");
+	});
+});
+
 describe("wall joins", () => {
 	it("round-trips through a mask", () => {
 		for (let m = 0; m < 16; m++) expect(joinsMask(joinsFromMask(m))).toBe(m);

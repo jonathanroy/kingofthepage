@@ -68,7 +68,13 @@ export function groundKey(tile: Tile, x: number, y: number, base: GroundLookup):
 			// Fences stand on grass, or on the stump of a chopped tree.
 			return base.terrainAt(x, y) === "tree" ? `s${v}` : `g${v}`;
 		case "tree":
+			// Apple trees are always round so their fruit reads clearly.
+			if (tile.apples !== undefined) return `A${tile.apples ? 1 : 0}${v}`;
 			return `${isPine(base, x, y) ? "p" : "t"}${v}`;
+		case "bush":
+			return `b${tile.ready ? 1 : 0}${v}`;
+		case "potato":
+			return `q${tile.ready ? 1 : 0}${v}`;
 		case "mine":
 			return `m${tile.size === "large" ? "L" : "S"}${v}`;
 		case "ore": {
@@ -151,6 +157,62 @@ const STUMP = [
 	"....kttttttk....",
 	".....kkkkkk.....",
 ];
+
+const BUSH = [
+	"....kkkkkk......",
+	"..kkLLLLMMkk....",
+	".kLLLLLMMMMDk...",
+	".kLLLMMMMMMDDk..",
+	"kLLLMMMMMMDDDk..",
+	"kMLMMMMMMDDDDk..",
+	".kMMMMMMDDDDk...",
+	"..kkDDDDDDkk....",
+	"....kkkkkk......",
+];
+
+/** Berry clusters on a ripe bush. */
+const BERRY_SPOTS: readonly [number, number][] = [
+	[3, 3],
+	[7, 2],
+	[9, 5],
+	[4, 6],
+	[11, 4],
+];
+
+function bush(ctx: Ctx, ripe: boolean): void {
+	ctx.globalAlpha = 0.22;
+	px(ctx, C.outline, 3, 13, 11, 2);
+	ctx.globalAlpha = 1;
+	drawRows(ctx, BUSH, { k: C.outline, L: C.bushLight, M: C.bushMid, D: C.bushDark }, 1, 5);
+	if (!ripe) return;
+	for (const [bx, by] of BERRY_SPOTS) {
+		px(ctx, C.berry, bx + 1, by + 5, 2, 2);
+		px(ctx, C.berryLight, bx + 1, by + 5, 1, 1);
+	}
+}
+
+function potatoPatch(ctx: Ctx, ripe: boolean): void {
+	if (!ripe) {
+		// Freshly dug: a mound of turned soil.
+		px(ctx, C.outline, 4, 9, 9, 5);
+		px(ctx, C.soil, 5, 10, 7, 3);
+		px(ctx, C.soilDark, 6, 12, 5, 1);
+		return;
+	}
+	// Leafy potato plant with a peek of tuber at the soil line.
+	px(ctx, C.soil, 4, 12, 8, 2);
+	for (const [lx, ly] of [
+		[5, 6],
+		[8, 4],
+		[10, 7],
+		[6, 9],
+	] as const) {
+		px(ctx, C.outline, lx - 1, ly - 1, 5, 4);
+		px(ctx, C.bushLight, lx, ly, 3, 2);
+		px(ctx, C.bushMid, lx + 1, ly + 1, 2, 1);
+	}
+	px(ctx, C.potato, 9, 12, 2, 1);
+}
 
 function treeShadow(ctx: Ctx): void {
 	ctx.globalAlpha = 0.22;
@@ -352,6 +414,46 @@ export function drawGround(ctx: Ctx, key: string): void {
 				0,
 				0,
 			);
+			break;
+		case "A": {
+			grass(ctx, Number(key.slice(2)));
+			treeShadow(ctx);
+			drawRows(
+				ctx,
+				TREE,
+				{
+					k: C.outline,
+					L: C.leafLight,
+					M: C.leafMid,
+					D: C.leafDark,
+					W: C.leafShine,
+					t: C.trunk,
+					d: C.trunkDark,
+				},
+				0,
+				0,
+			);
+			if (key[1] === "1") {
+				for (const [ax, ay] of [
+					[4, 4],
+					[9, 3],
+					[11, 7],
+					[6, 8],
+				] as const) {
+					px(ctx, C.outline, ax - 1, ay - 1, 4, 4);
+					px(ctx, C.apple, ax, ay, 2, 2);
+					px(ctx, C.appleLight, ax, ay, 1, 1);
+				}
+			}
+			break;
+		}
+		case "b":
+			grass(ctx, Number(key.slice(2)));
+			bush(ctx, key[1] === "1");
+			break;
+		case "q":
+			grass(ctx, Number(key.slice(2)));
+			potatoPatch(ctx, key[1] === "1");
 			break;
 		case "p":
 			grass(ctx, v);

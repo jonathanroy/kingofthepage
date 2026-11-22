@@ -1,14 +1,25 @@
 import type {
 	ActionRejectReason,
+	FoodCounts,
 	JoinRejectReason,
 	LeaderboardEntry,
 	Notice,
 	PlayerRef,
 } from "@kotp/shared/protocol";
-import { FENCE, fenceBuildCost, HANDLE } from "@kotp/shared/rules";
-import { drawCoinIcon, drawIngotIcon, drawLogIcon } from "../art/effects";
+import { FENCE, fenceBuildCost, HANDLE, TOOLS } from "@kotp/shared/rules";
+import {
+	drawAppleIcon,
+	drawBerriesIcon,
+	drawCoinIcon,
+	drawDropIcon,
+	drawHeartIcon,
+	drawIngotIcon,
+	drawLogIcon,
+	drawMeatIcon,
+	drawPotatoIcon,
+} from "../art/effects";
 import { context, makeCanvas } from "../art/pixels";
-import type { Me } from "../state/clientWorld";
+import type { Me, Status } from "../state/clientWorld";
 
 function iconUrl(
 	width: number,
@@ -34,6 +45,15 @@ const REJECT_TEXT: Partial<Record<ActionRejectReason, string>> = {
 	occupied: "Someone is standing there.",
 	notEnoughWood: "Not enough wood.",
 	notEnoughIron: "Not enough iron. Mine the rusty rocks beside hills.",
+	nothingToInteract: "Nothing to pick, dig or drink there.",
+	notReady: "Nothing ripe yet. Come back later.",
+	bagFull: "Your food bag is full.",
+	nothingToEat: "You have no food. Pick apples or berries, dig potatoes, or hunt.",
+	noSpear: `You don't have a spear yet. Press C to craft one (${TOOLS.spearWood} wood, ${TOOLS.spearIron} iron).`,
+	alreadyHaveSpear: "You already have a spear.",
+	useAxe: "Switch to your axe (Q) to chop or mine.",
+	useSpear: "Switch to your spear (Q) to hunt.",
+	nothingToHit: "Nothing to hit there.",
 	maxLevel: "This fence is already at the highest level.",
 	alreadyGate: "That's already a gate.",
 	nothingToUpgrade: "Face one of your fences first.",
@@ -44,6 +64,13 @@ const JOIN_TEXT: Record<JoinRejectReason, string> = {
 	handleTaken: "That name is taken. Try another.",
 	badToken: "Your saved session expired. Pick a name to start again.",
 	alreadyOnline: "You're already playing in another tab.",
+};
+
+const FOOD_NAMES: Record<keyof FoodCounts, string> = {
+	apple: "an apple",
+	berries: "berries",
+	potato: "a potato",
+	meat: "meat",
 };
 
 function noticeText(n: Notice): string {
@@ -58,6 +85,16 @@ function noticeText(n: Notice): string {
 			return `You and ${n.with.handle} are now allies.`;
 		case "allianceEnded":
 			return `Your alliance with ${n.with.handle} has ended.`;
+		case "bearComing":
+			return "A zombie bear is coming! Get behind strong walls or ready your spear.";
+		case "died":
+			return n.cause === "bear"
+				? "A zombie bear got you. You lost what you carried, but your land is safe."
+				: "You starved. You lost what you carried, but your land is safe.";
+		case "ate":
+			return `You ate ${FOOD_NAMES[n.food]}.`;
+		case "spoiled":
+			return `Some of your ${FOOD_NAMES[n.food]} went bad.`;
 		case "allianceRequestFailed":
 			return {
 				unknownHandle: "No player with that name.",
@@ -96,8 +133,15 @@ export class Hud {
 		el<HTMLImageElement>("icon-wood").src = iconUrl(7, 5, drawLogIcon);
 		el<HTMLImageElement>("icon-gold").src = iconUrl(5, 5, drawCoinIcon);
 		el<HTMLImageElement>("icon-iron").src = iconUrl(7, 4, drawIngotIcon);
+		el<HTMLImageElement>("icon-health").src = iconUrl(7, 6, drawHeartIcon);
+		el<HTMLImageElement>("icon-food").src = iconUrl(7, 6, drawMeatIcon);
+		el<HTMLImageElement>("icon-water").src = iconUrl(7, 6, drawDropIcon);
+		el<HTMLImageElement>("icon-apple").src = iconUrl(7, 6, drawAppleIcon);
+		el<HTMLImageElement>("icon-berries").src = iconUrl(7, 6, drawBerriesIcon);
+		el<HTMLImageElement>("icon-potato").src = iconUrl(7, 6, drawPotatoIcon);
+		el<HTMLImageElement>("icon-meat").src = iconUrl(7, 6, drawMeatIcon);
 		el("help").textContent =
-			`Arrows/WASD move · Space chop/mine (hold) · F fence (${fenceBuildCost()}) · U repair/upgrade · G gate (+${FENCE.gateConversionCost})`;
+			`Arrows/WASD move · Space use tool (hold) · E pick/drink · X eat · F fence (${fenceBuildCost()}) · U repair/upgrade · G gate (+${FENCE.gateConversionCost})`;
 		el("confirm-yes").addEventListener("click", () => this.closeConfirm(true));
 		el("confirm-no").addEventListener("click", () => this.closeConfirm(false));
 	}
@@ -147,6 +191,7 @@ export class Hud {
 		this.hud.hidden = false;
 		this.allyPanel.hidden = false;
 		el("board").hidden = false;
+		el("status").hidden = false;
 		this.input.blur();
 	}
 
@@ -156,6 +201,24 @@ export class Hud {
 		el("hud-iron").textContent = String(me.iron);
 		el("hud-pos").textContent = `${me.x}, ${me.y}`;
 		el("hud-rate").textContent = me.goldPerMinute > 0 ? ` +${me.goldPerMinute}/min` : "";
+	}
+
+	/** §8 meters, carried food and the selected tool. */
+	updateStatus(s: Status): void {
+		el("status").hidden = false;
+		for (const meter of ["health", "food", "water"] as const) {
+			const value = Math.round(s[meter]);
+			el(`bar-${meter}`).style.width = `${value}%`;
+			el(`bar-${meter}`).classList.toggle("low", value <= 25);
+			el(`num-${meter}`).textContent = String(value);
+		}
+		for (const food of ["apple", "berries", "potato", "meat"] as const) {
+			el(`food-${food}`).textContent = String(s.pantry[food]);
+		}
+		el("tool").textContent = s.tool === "spear" ? "Spear" : "Axe";
+		el("tool-hint").textContent = s.hasSpear
+			? "Q to switch"
+			: `C: craft spear (${TOOLS.spearWood} wood, ${TOOLS.spearIron} iron)`;
 	}
 
 	updateGold(gold: number): void {

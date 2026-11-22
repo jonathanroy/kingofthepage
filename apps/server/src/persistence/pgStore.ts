@@ -35,20 +35,27 @@ export class PgStore implements WorldStore {
 	}
 
 	async load(): Promise<WorldSnapshot> {
-		const [players, fences, chops, ore, enclosures, alliances, mines] = await Promise.all([
-			this.db.select().from(schema.players),
-			this.db.select().from(schema.fences),
-			this.db.select().from(schema.choppedTrees),
-			this.db.select().from(schema.oreMined),
-			this.db.select().from(schema.enclosures),
-			this.db.select().from(schema.alliances),
-			this.db.select().from(schema.mines),
-		]);
+		const [players, fences, chops, ore, forageRows, enclosures, alliances, mines] =
+			await Promise.all([
+				this.db.select().from(schema.players),
+				this.db.select().from(schema.fences),
+				this.db.select().from(schema.choppedTrees),
+				this.db.select().from(schema.oreMined),
+				this.db.select().from(schema.forage),
+				this.db.select().from(schema.enclosures),
+				this.db.select().from(schema.alliances),
+				this.db.select().from(schema.mines),
+			]);
 		return {
-			players: players.map((p) => ({ ...p, facing: toDirection(p.facing) })),
+			players: players.map((p) => ({
+				...p,
+				facing: toDirection(p.facing),
+				tool: p.tool === "spear" ? ("spear" as const) : ("axe" as const),
+			})),
 			fences,
 			chops,
 			ore,
+			forage: forageRows,
 			enclosures,
 			alliances: alliances.map((a) => ({ a: a.playerA, b: a.playerB })),
 			mines,
@@ -108,6 +115,15 @@ export class PgStore implements WorldStore {
 					.onConflictDoUpdate({
 						target: [schema.oreMined.x, schema.oreMined.y],
 						set: { mined: sql`excluded.mined` },
+					});
+			}
+			if (batch.forageSet.length > 0) {
+				await tx
+					.insert(schema.forage)
+					.values([...batch.forageSet])
+					.onConflictDoUpdate({
+						target: [schema.forage.x, schema.forage.y],
+						set: { harvestedAt: sql`excluded.harvested_at` },
 					});
 			}
 			if (batch.enclosuresRemoved.length > 0) {

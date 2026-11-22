@@ -1,12 +1,17 @@
 import type Phaser from "phaser";
 import { drawAxe, drawPlayerSheet, PLAYER_DIRECTIONS, WALK_FRAMES } from "../art/characters";
+import { CREATURE_FRAMES, drawCreatureSheet, drawSpear } from "../art/creatures";
 import {
+	drawAppleIcon,
+	drawBerriesIcon,
 	drawChip,
 	drawCoinIcon,
 	drawDust,
 	drawGlint,
 	drawIngotIcon,
 	drawLogIcon,
+	drawMeatIcon,
+	drawPotatoIcon,
 	drawSparkleSheet,
 } from "../art/effects";
 import { drawGround, T } from "../art/ground";
@@ -51,6 +56,21 @@ export function createStaticTextures(scene: Phaser.Scene): void {
 	addCanvasTexture(scene, "log", 7, 5, drawLogIcon);
 	addCanvasTexture(scene, "coin", 5, 5, drawCoinIcon);
 	addCanvasTexture(scene, "ingot", 7, 4, drawIngotIcon);
+	addCanvasTexture(scene, "food-apple", 7, 6, drawAppleIcon);
+	addCanvasTexture(scene, "food-berries", 7, 6, drawBerriesIcon);
+	addCanvasTexture(scene, "food-potato", 7, 6, drawPotatoIcon);
+	addCanvasTexture(scene, "food-meat", 7, 6, drawMeatIcon);
+	addCanvasTexture(scene, "spear", 12, 4, drawSpear);
+	for (const kind of ["rabbit", "deer", "bear"] as const) {
+		addCanvasTexture(
+			scene,
+			`creature-${kind}`,
+			TILE * CREATURE_FRAMES,
+			TILE,
+			(ctx) => drawCreatureSheet(ctx, kind),
+			TILE,
+		);
+	}
 	addCanvasTexture(scene, "chip", 2, 2, drawChip);
 	addCanvasTexture(scene, "dust", 4, 3, drawDust);
 	addCanvasTexture(scene, "glint", 3, 1, drawGlint);

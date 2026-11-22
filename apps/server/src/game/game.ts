@@ -4,10 +4,11 @@ import {
 	PROTOCOL_VERSION,
 	type ServerMessage,
 } from "@kotp/shared/protocol";
-import { checkHandle, LEADERBOARD, NETWORK } from "@kotp/shared/rules";
+import { checkHandle, LEADERBOARD, NETWORK, SURVIVAL } from "@kotp/shared/rules";
 import { type ChunkCoord, chunkKey, chunkOfTile, type Direction } from "@kotp/shared/world";
 import { suggestHandle } from "./names";
 import { findSpawnTile } from "./spawn";
+import { Wildlife } from "./wildlife";
 import type { ActionResult, PlayerState, World, WorldEvent } from "./world";
 
 export type GameDeps = {
@@ -18,11 +19,25 @@ export type GameDeps = {
 	readonly newId: () => string;
 	readonly newToken: () => string;
 	readonly hashToken: (token: string) => string;
+	/** Spawn animals and bears around players; tests usually place them by hand. */
+	readonly autoSpawnCreatures?: boolean;
 };
 
 type Intent = Extract<
 	ClientMessage,
-	{ type: "move" | "turn" | "chop" | "build" | "upgrade" | "makeGate" }
+	{
+		type:
+			| "move"
+			| "turn"
+			| "chop"
+			| "build"
+			| "upgrade"
+			| "makeGate"
+			| "interact"
+			| "eat"
+			| "craftSpear"
+			| "selectTool";
+	}
 >;
 
 type Session = {
@@ -43,7 +58,16 @@ export class Game {
 	private readonly sessions = new Map<string, Session>();
 	private readonly sessionByPlayer = new Map<string, string>();
 
-	constructor(private readonly deps: GameDeps) {}
+	readonly wildlife: Wildlife;
+	private lastSurvivalTick = 0;
+
+	constructor(private readonly deps: GameDeps) {
+		this.wildlife = new Wildlife(deps.world, {
+			random: deps.random,
+			newId: deps.newId,
+			autoSpawn: deps.autoSpawnCreatures ?? true,
+		});
+	}
 
 	connect(send: (msg: ServerMessage) => void, close: () => void): string {
 		const id = this.deps.newId();
@@ -113,16 +137,28 @@ export class Game {
 			if (!player) continue;
 			while (session.queue.length > 0) {
 				const intent = session.queue[0] as Intent;
-				const readyAt =
-					intent.type === "turn"
-						? 0
-						: intent.type === "move"
-							? player.nextMoveAt
-							: player.nextActionAt;
+				const instant =
+					intent.type === "turn" ||
+					intent.type === "eat" ||
+					intent.type === "craftSpear" ||
+					intent.type === "selectTool";
+				const readyAt = instant
+					? 0
+					: intent.type === "move"
+						? player.nextMoveAt
+						: player.nextActionAt;
 				if (now < readyAt) break;
 				session.queue.shift();
 				this.runIntent(session, player, intent, now);
 			}
+		}
+		const wild = this.wildlife.update(now);
+		this.publish(wild.events);
+		for (const id of wild.killed) this.killPlayer(id, "bear");
+		if (now - this.lastSurvivalTick >= SURVIVAL.tickMs) {
+			const elapsed = this.lastSurvivalTick === 0 ? SURVIVAL.tickMs : now - this.lastSurvivalTick;
+			this.lastSurvivalTick = now;
+			this.tickSurvival(elapsed);
 		}
 	}
 
@@ -204,6 +240,7 @@ export class Game {
 		this.sendInventory(player.id);
 		this.refreshInterest(session, player);
 		this.sendAlliances(player.id);
+		this.sendStatus(player.id);
 		this.sendNear(
 			player.x,
 			player.y,
@@ -212,9 +249,43 @@ export class Game {
 		);
 	}
 
+	// ---------- Survival (§8) ----------
+
+	/** Online players only: meters and spoilage pause while offline. */
+	private tickSurvival(elapsedMs: number): void {
+		const { world } = this.deps;
+		for (const p of world.onlinePlayers()) {
+			const { dead, spoiled } = world.tickSurvival(p.id, elapsedMs);
+			for (const food of spoiled)
+				this.sessionOf(p.id)?.send({ type: "notice", notice: { kind: "spoiled", food } });
+			if (dead) this.killPlayer(p.id, "starved");
+			else this.sendStatus(p.id);
+		}
+	}
+
+	/** §8 Death: respawn like a new player, losing what was carried. */
+	private killPlayer(playerId: string, cause: "starved" | "bear"): void {
+		const { world } = this.deps;
+		const player = world.playerById(playerId);
+		if (!player) return;
+		const at = findSpawnTile(world, this.deps.random, this.deps.now());
+		const events = world.respawn(playerId, at);
+		const session = this.sessionOf(playerId);
+		session?.send({ type: "notice", notice: { kind: "died", cause } });
+		session?.send({ type: "respawned", x: at.x, y: at.y, facing: player.facing });
+		this.publish(events);
+		if (session) this.refreshInterest(session, player);
+	}
+
+	private sendStatus(playerId: string): void {
+		const p = this.deps.world.playerById(playerId);
+		if (!p) return;
+		this.sessionOf(playerId)?.send({ type: "status", ...this.deps.world.statusOf(p) });
+	}
+
 	// ---------- Gold and leaderboards (§6, §7) ----------
 
-	/** Settles the player's mines first: reading a balance is a settlement point (§8). */
+	/** Settles the player's mines first: reading a balance is a settlement point (§10). */
 	private sendInventory(playerId: string): void {
 		const { world } = this.deps;
 		const p = world.playerById(playerId);
@@ -377,7 +448,23 @@ export class Game {
 				result = world.turn(player.id, intent.dir);
 				break;
 			case "chop":
-				result = world.chop(player.id, now, intent.confirmAlly ?? false);
+				// The chop key uses the selected tool (§9): the spear hits creatures instead.
+				result =
+					player.tool === "spear"
+						? this.wildlife.spearHit(player, now)
+						: world.chop(player.id, now, intent.confirmAlly ?? false);
+				break;
+			case "interact":
+				result = world.interact(player.id, now);
+				break;
+			case "eat":
+				result = world.eat(player.id);
+				break;
+			case "craftSpear":
+				result = world.craftSpear(player.id);
+				break;
+			case "selectTool":
+				result = world.selectTool(player.id, intent.tool);
 				break;
 			case "build":
 				result = world.build(player.id, now);
@@ -453,6 +540,25 @@ export class Game {
 				case "control":
 					this.publishControl(e.changes);
 					break;
+				case "status":
+					this.sendStatus(e.id);
+					break;
+				case "notice":
+					this.sessionOf(e.id)?.send({ type: "notice", notice: e.notice });
+					break;
+				case "creature": {
+					const info = this.wildlife.info(e.id);
+					if (!info) break;
+					const targets = new Set([
+						...this.sessionsNear(info.x, info.y),
+						...this.sessionsNear(e.fromX, e.fromY),
+					]);
+					for (const s of targets) s.send({ type: "creature", creature: info });
+					break;
+				}
+				case "creatureGone":
+					this.sendNear(e.x, e.y, { type: "creatureGone", id: e.id });
+					break;
 				case "allyChop": {
 					const by = this.ref(e.byId);
 					if (by) {
@@ -496,6 +602,10 @@ export class Game {
 		for (const key of fresh) {
 			const { cx, cy } = wanted.get(key) as ChunkCoord;
 			session.send({ type: "chunk", cx, cy, ...world.chunkSnapshot(cx, cy) });
+		}
+		for (const creature of this.wildlife.all()) {
+			const { cx, cy } = chunkOfTile(creature.x, creature.y);
+			if (freshSet.has(chunkKey(cx, cy))) session.send({ type: "creature", creature });
 		}
 		for (const other of world.onlinePlayers()) {
 			if (other.id === player.id) continue;

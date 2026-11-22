@@ -80,6 +80,7 @@ Before saying a task is done, run `pnpm typecheck` and `pnpm test` and make sure
 - **Tree regrowth:** store the chop timestamp. A tree exists again once `now - choppedAt >= regrowDelay`. Evaluate when a chunk is loaded or the tile is touched.
 - **Gold:** each mine stores `controllerId` and `controlledSince`. Settle earnings (`minutes × rate`) whenever control changes or a balance is read. Leaderboards project unsettled gold read-only instead of settling, so reading them doesn't write.
 - Do not create per-tree or per-mine intervals or cron jobs.
+- Exception: survival meters, food spoilage and creatures (design doc §8, §9) advance in the existing 20 Hz game loop, for online players only. That's what pauses them while a player is offline. Creatures are never stored.
 
 ### Enclosure detection
 

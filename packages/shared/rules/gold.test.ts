@@ -3,7 +3,7 @@ import { MINES } from "./config";
 import { mineGoldPerMinute, settleMineGold } from "./gold";
 import { isWalkable, isWallFor, resolveTile } from "./tiles";
 
-describe("settleMineGold (§6, §8 Lazy updates)", () => {
+describe("settleMineGold (§6, §10 Lazy updates)", () => {
 	it("credits elapsed minutes times the rate and restarts the clock", () => {
 		const result = settleMineGold("large", { controllerId: "p", controlledSince: 0 }, 10 * 60_000);
 		expect(result.earned).toBe(10 * MINES.goldPerMinute.large);
@@ -26,7 +26,7 @@ describe("settleMineGold (§6, §8 Lazy updates)", () => {
 
 describe("mine tiles", () => {
 	it("are solid, can't hold a fence, and don't block enclosure", () => {
-		const tile = resolveTile("grass", undefined, 0, false, "small");
+		const tile = resolveTile("grass", undefined, 0, { mine: "small" });
 		expect(tile).toEqual({ kind: "mine", size: "small" });
 		expect(isWalkable(tile)).toBe(false);
 		expect(isWallFor(tile, "p")).toBe(false);

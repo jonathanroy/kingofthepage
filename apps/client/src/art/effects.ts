@@ -62,3 +62,65 @@ export function drawDust(ctx: Ctx): void {
 export function drawGlint(ctx: Ctx): void {
 	px(ctx, "#ffffff", 0, 0, 3, 1);
 }
+
+/** Food icons, 7×6, for the HUD and pop-ups (§8). */
+export function drawAppleIcon(ctx: Ctx): void {
+	drawRows(
+		ctx,
+		["...g...", ".kkgkk.", "kaAaaak", "kaaaaak", "kaaaaak", ".kkkkk."],
+		{ k: C.outline, a: C.apple, A: C.appleLight, g: C.leafMid },
+		0,
+		0,
+	);
+}
+
+export function drawBerriesIcon(ctx: Ctx): void {
+	drawRows(
+		ctx,
+		["..g.g..", ".kkgkk.", "kbBkbBk", "kbbkbbk", ".kbBbk.", "..kkk.."],
+		{ k: C.outline, b: C.berry, B: C.berryLight, g: C.leafMid },
+		0,
+		0,
+	);
+}
+
+export function drawPotatoIcon(ctx: Ctx): void {
+	drawRows(
+		ctx,
+		["..kkk..", ".kpPpk.", "kppppdk", "kpdpppk", ".kppdk.", "..kkk.."],
+		{ k: C.outline, p: C.potato, P: C.goldLight, d: C.soil },
+		0,
+		0,
+	);
+}
+
+export function drawMeatIcon(ctx: Ctx): void {
+	drawRows(
+		ctx,
+		[".kkkk..", "kmMmmk.", "kmmmmk.", ".kmmkbk", "..kkbbk", "....kk."],
+		{ k: C.outline, m: C.meat, M: C.appleLight, b: C.bone },
+		0,
+		0,
+	);
+}
+
+/** Meter icons, 7×6: heart (health), drumstick (food), drop (water). */
+export function drawHeartIcon(ctx: Ctx): void {
+	drawRows(
+		ctx,
+		[".kk.kk.", "krRkrrk", "krrrrrk", ".krrrk.", "..krk..", "...k..."],
+		{ k: C.outline, r: C.apple, R: C.appleLight },
+		0,
+		0,
+	);
+}
+
+export function drawDropIcon(ctx: Ctx): void {
+	drawRows(
+		ctx,
+		["...k...", "..kwk..", ".kwWwk.", "kwwwwwk", "kwwwwwk", ".kkkkk."],
+		{ k: C.outline, w: C.water, W: C.waterLight },
+		0,
+		0,
+	);
+}

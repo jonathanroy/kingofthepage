@@ -127,3 +127,70 @@ export const LEADERBOARD = {
 	/** The server recomputes the boards at most this often and serves the cached copy in between. */
 	cacheMs: 5000,
 } as const;
+
+/** §8 Survival. Rates are per minute of online time. */
+export const SURVIVAL = {
+	max: 100,
+	foodPerMinute: 1,
+	waterPerMinute: 1.5,
+	/** Extra drain for each work action: chop, mine, build, upgrade, spear thrust, harvest. */
+	workFood: 0.15,
+	workWater: 0.25,
+	/** Health lost per minute for each empty meter. */
+	starvePerMinute: 4,
+	/** Health regained per minute while food and water are both at least half full. */
+	regenPerMinute: 2,
+	waterPerSip: 30,
+	/** How often the server advances online players' meters. */
+	tickMs: 1000,
+} as const;
+
+/** §8 Food. `shelfMs`: one item of the kind spoils every this much online time. */
+export const FOOD = {
+	capacity: 12,
+	kinds: {
+		apple: { restores: 15, shelfMs: 30 * 60_000 },
+		berries: { restores: 8, shelfMs: 15 * 60_000 },
+		potato: { restores: 25, shelfMs: 60 * 60_000 },
+		meat: { restores: 35, shelfMs: 12 * 60_000 },
+	},
+} as const;
+
+/** §8 Foraging: where plants grow (chance per eligible tile), how much a harvest gives, regrowth. */
+export const FORAGE = {
+	apple: { chance: 0.12, yield: 3, regrowMs: 10 * 60_000 },
+	berry: { chance: 0.012, yield: 4, regrowMs: 6 * 60_000 },
+	potato: { chance: 0.006, yield: 2, regrowMs: 20 * 60_000 },
+} as const;
+
+/** §9 Tools. */
+export const TOOLS = {
+	spearWood: 4,
+	spearIron: 1,
+} as const;
+
+/** §9 Animals and zombie bears. Times in milliseconds. */
+export const CREATURES = {
+	rabbit: { hp: 1, meat: 1, moveMs: 450, fleeRange: 3 },
+	deer: { hp: 3, meat: 3, moveMs: 380, fleeRange: 4 },
+	bear: {
+		hp: 12,
+		moveMs: 650,
+		biteDamage: 20,
+		biteMs: 1200,
+		clawDamage: 10,
+		clawMs: 900,
+		lifetimeMs: 5 * 60_000,
+	},
+	/** Bears claw through fences up to this level; higher walls hold them back. */
+	bearMaxFenceLevel: 3,
+	animalsPerPlayer: 4,
+	animalSpawnMin: 10,
+	animalSpawnMax: 18,
+	/** Animals farther than this from every player are removed. */
+	despawnRange: 40,
+	/** Chance per online player per minute that a zombie bear comes. */
+	bearChancePerMinute: 1 / 40,
+	bearSpawnMin: 15,
+	bearSpawnMax: 20,
+} as const;

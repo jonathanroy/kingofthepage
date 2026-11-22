@@ -3,6 +3,7 @@ import type {
 	StoredChop,
 	StoredEnclosure,
 	StoredFence,
+	StoredForage,
 	StoredMine,
 	StoredOre,
 	StoredPlayer,
@@ -17,6 +18,7 @@ export class MemoryStore implements WorldStore {
 	readonly fences = new Map<string, StoredFence>();
 	readonly chops = new Map<string, StoredChop>();
 	readonly ore = new Map<string, StoredOre>();
+	readonly forage = new Map<string, StoredForage>();
 	readonly enclosures = new Map<string, StoredEnclosure>();
 	readonly alliances = new Map<string, StoredAlliance>();
 	readonly mines = new Map<string, StoredMine>();
@@ -28,6 +30,7 @@ export class MemoryStore implements WorldStore {
 			fences: [...this.fences.values()],
 			chops: [...this.chops.values()],
 			ore: [...this.ore.values()],
+			forage: [...this.forage.values()],
 			enclosures: [...this.enclosures.values()],
 			alliances: [...this.alliances.values()],
 			mines: [...this.mines.values()],
@@ -42,6 +45,7 @@ export class MemoryStore implements WorldStore {
 		for (const c of batch.chopsRemoved) this.chops.delete(`${c.x},${c.y}`);
 		for (const c of batch.chopsSet) this.chops.set(`${c.x},${c.y}`, c);
 		for (const o of batch.oreSet) this.ore.set(`${o.x},${o.y}`, o);
+		for (const f of batch.forageSet) this.forage.set(`${f.x},${f.y}`, f);
 		for (const id of batch.enclosuresRemoved) this.enclosures.delete(id);
 		for (const e of batch.enclosuresAdded) this.enclosures.set(e.id, e);
 		for (const a of batch.alliancesRemoved) this.alliances.delete(`${a.a}|${a.b}`);

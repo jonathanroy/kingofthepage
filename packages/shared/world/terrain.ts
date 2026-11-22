@@ -2,6 +2,7 @@ import alea from "alea";
 import { createNoise2D, type NoiseFunction2D } from "simplex-noise";
 import { TERRAIN } from "../rules/config";
 import { CHUNK_SIZE, chunkKey, chunkOrigin, localIndex, tileToChunk } from "./coords";
+import { type Forage, forageAt } from "./forage";
 import { tileRandom } from "./hash";
 import { type Mine, type MineSize, mineInChunk } from "./mines";
 import { oreCapacityAt } from "./ore";
@@ -18,6 +19,8 @@ export type TerrainGenerator = {
 	mineAt(x: number, y: number): MineSize | null;
 	/** Starting iron of the ore rock on this tile, if any (§2 Iron ore). */
 	oreAt(x: number, y: number): number | null;
+	/** The food plant on this tile, if any (§8 Food). Ore rocks take precedence. */
+	forageAt(x: number, y: number): Forage | null;
 };
 
 /** Ore needs a few terrain lookups per tile and is asked for constantly, so it's cached. */
@@ -67,7 +70,12 @@ export function createTerrainGenerator(seed: string): TerrainGenerator {
 		return ore;
 	}
 
-	return { seed, terrainAt, mineAt, oreAt };
+	function forage(x: number, y: number): Forage | null {
+		if (mineAt(x, y) !== null || oreAt(x, y) !== null) return null;
+		return forageAt(seed, x, y, terrainAt(x, y));
+	}
+
+	return { seed, terrainAt, mineAt, oreAt, forageAt: forage };
 }
 
 /** Row-major terrain codes (indices into TERRAIN_CODES) for one 32×32 chunk. */

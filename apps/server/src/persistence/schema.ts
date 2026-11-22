@@ -1,9 +1,11 @@
+import { emptyPantry, type Pantry } from "@kotp/shared/rules";
 import {
 	bigint,
 	boolean,
 	doublePrecision,
 	index,
 	integer,
+	jsonb,
 	pgTable,
 	primaryKey,
 	smallint,
@@ -27,6 +29,13 @@ export const players = pgTable("players", {
 	iron: integer("iron").notNull().default(0),
 	/** Fractional: gold is settled per millisecond of mine control (§6). */
 	gold: doublePrecision("gold").notNull().default(0),
+	// §8 Survival: meters, carried food and tools.
+	health: doublePrecision("health").notNull().default(100),
+	food: doublePrecision("food").notNull().default(100),
+	water: doublePrecision("water").notNull().default(100),
+	pantry: jsonb("pantry").$type<Pantry>().notNull().default(emptyPantry()),
+	hasSpear: boolean("has_spear").notNull().default(false),
+	tool: text("tool").notNull().default("axe"),
 	createdAt: ms("created_at").notNull(),
 	lastSeenAt: ms("last_seen_at").notNull(),
 });
@@ -103,6 +112,17 @@ export const oreMined = pgTable(
 		x: integer("x").notNull(),
 		y: integer("y").notNull(),
 		mined: integer("mined").notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.x, t.y] })],
+);
+
+/** When each food plant was last harvested (§8); position and kind come from the seed. */
+export const forage = pgTable(
+	"forage",
+	{
+		x: integer("x").notNull(),
+		y: integer("y").notNull(),
+		harvestedAt: ms("harvested_at").notNull(),
 	},
 	(t) => [primaryKey({ columns: [t.x, t.y] })],
 );
