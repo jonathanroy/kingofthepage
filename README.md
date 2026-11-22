@@ -1,5 +1,7 @@
 # King of the Page
 
+![A player beside a claimed base: steel walls with pennants, wooden gates, a gold mine and forest inside the shaded land, with the HUD showing resources, survival meters and controls](docs/images/preview.png)
+
 A real-time multiplayer web game. Players roam a procedurally generated countryside, chop trees for wood, build fences to enclose land, and compete on two leaderboards: land controlled and gold earned.
 
 Along the way they mine iron to reinforce their walls, forage and hunt to stay fed, fend off zombie bears with a spear, swim across lakes, and hunt for a wandering magic shop that sells rare cosmetics.
