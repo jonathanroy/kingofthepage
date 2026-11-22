@@ -1,5 +1,5 @@
 import type { ClientMessage, LookInfo } from "@kotp/shared/protocol";
-import { FENCE_LEVELS, type Fence, PACE } from "@kotp/shared/rules";
+import { FENCE_LEVELS, type Fence, isSwimmable, moveIntervalFor, PACE } from "@kotp/shared/rules";
 import {
 	CHUNK_SIZE,
 	chunkKey,
@@ -103,6 +103,9 @@ type PlayerView = {
 	/** §10 collectibles worn. */
 	readonly cape: Phaser.GameObjects.Image;
 	readonly hat: Phaser.GameObjects.Image;
+	/** §1 Swimming: shown around the chest while the player is in water. */
+	readonly ripple: Phaser.GameObjects.Image;
+	swimming: boolean;
 	pet: Phaser.GameObjects.Image | null;
 	look: LookInfo;
 	dir: Direction;
@@ -117,6 +120,9 @@ const DIRECTIONS = ["up", "down", "left", "right"] as const;
 const GLINT_EVERY_MS = 220;
 const MAX_GLINTS = 40;
 const LABEL_FONT = '"Jersey 10", ui-monospace, monospace';
+/** Swimmers sink this many pixels and show only the top rows of their sprite (head and shoulders). */
+const SWIM_SINK = 4;
+const SWIM_SHOWN = 10;
 
 function around8(x: number, y: number): { x: number; y: number }[] {
 	const out: { x: number; y: number }[] = [];
@@ -359,7 +365,7 @@ export class WorldScene extends Phaser.Scene {
 		const seq = this.deps.nextSeq();
 		this.deps.world.predictMove(dir, seq);
 		this.deps.send({ type: "move", dir, seq });
-		this.nextMoveAt = time + PACE.moveIntervalMs;
+		this.nextMoveAt = time + (me ? moveIntervalFor(this.deps.world.tileAt(me.x, me.y)) : 0);
 		const moved = from && me && (me.x !== from.x || me.y !== from.y);
 		if (moved && this.keys.build.isDown) {
 			// Lay a fence on the tile just left; the server builds it after the move.
@@ -717,7 +723,11 @@ export class WorldScene extends Phaser.Scene {
 			.setOrigin(0.5, 1);
 		const cape = this.add.image(0, 0, "chip").setOrigin(0).setVisible(false);
 		const hat = this.add.image(0, -HAT_OVERHANG, "chip").setOrigin(0).setVisible(false);
-		const container = this.add.container(x * TILE, y * TILE, [cape, body, hat, label]);
+		const ripple = this.add
+			.image(0, SWIM_SINK + SWIM_SHOWN - 2, "ripple")
+			.setOrigin(0)
+			.setVisible(false);
+		const container = this.add.container(x * TILE, y * TILE, [cape, body, ripple, hat, label]);
 		container.setDepth(DEPTH.player);
 		const view: PlayerView = {
 			container,
@@ -725,6 +735,8 @@ export class WorldScene extends Phaser.Scene {
 			label,
 			cape,
 			hat,
+			ripple,
+			swimming: false,
 			pet: null,
 			look: {},
 			dir,
@@ -762,7 +774,8 @@ export class WorldScene extends Phaser.Scene {
 			return;
 		}
 		view.moving = true;
-		this.puffDust(fromX, fromY);
+		const duration = moveIntervalFor(this.deps.world.tileAt(x, y));
+		if (!view.swimming) this.puffDust(fromX, fromY);
 		if (view.pet) {
 			// The pet trots one step behind, into the tile its owner just left.
 			view.pet.setFlipX(x * TILE > fromX);
@@ -771,14 +784,14 @@ export class WorldScene extends Phaser.Scene {
 				targets: view.pet,
 				x: fromX,
 				y: fromY,
-				duration: PACE.moveIntervalMs + 60,
+				duration: duration + 60,
 			});
 		}
 		this.tweens.add({
 			targets: view.container,
 			x: x * TILE,
 			y: y * TILE,
-			duration: PACE.moveIntervalMs,
+			duration,
 			onComplete: () => {
 				view.moving = false;
 			},
@@ -793,6 +806,7 @@ export class WorldScene extends Phaser.Scene {
 			view.body.setFrame(playerFrame(view.dir, view.moving ? step : 0));
 		}
 		for (const view of all) {
+			this.updateSwimming(view, time);
 			this.orderCape(view);
 			if (view.pet) view.pet.setFrame(view.moving ? Math.floor(time / 150) % 2 : 0);
 		}
@@ -851,6 +865,23 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	/** Seen from behind, the cape covers the back; otherwise it hangs behind the body. */
+	/** §1 Swimming: switches to head-and-shoulders with a ripple once the player is mostly in water. */
+	private updateSwimming(view: PlayerView, time: number): void {
+		const tx = Math.round(view.container.x / TILE);
+		const ty = Math.round(view.container.y / TILE);
+		const swimming = isSwimmable(this.deps.world.tileAt(tx, ty));
+		if (swimming) view.ripple.setFlipX(Math.floor(time / 400) % 2 === 1);
+		if (swimming === view.swimming) return;
+		view.swimming = swimming;
+		const sink = swimming ? SWIM_SINK : 0;
+		if (swimming) view.body.setCrop(0, 0, TILE, SWIM_SHOWN);
+		else view.body.setCrop();
+		view.body.setY(sink);
+		view.hat.setY(-HAT_OVERHANG + sink);
+		view.ripple.setVisible(swimming);
+		view.cape.setAlpha(swimming ? 0 : 1);
+	}
+
 	private orderCape(view: PlayerView): void {
 		if (view.dir === "up") view.container.moveAbove(view.cape, view.body);
 		else view.container.moveBelow(view.cape, view.body);

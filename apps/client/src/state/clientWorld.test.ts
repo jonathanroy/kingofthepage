@@ -226,3 +226,20 @@ describe("ClientWorld", () => {
 		expect(world.chunks.has("10,0")).toBe(true);
 	});
 });
+
+describe("ClientWorld swimming (§1)", () => {
+	it("predicts a move into water", () => {
+		const { world } = setup();
+		let lake: { x: number; y: number } | undefined;
+		for (let y = -40; y < 40 && !lake; y++) {
+			for (let x = -40; x < 40 && !lake; x++) {
+				if (gen.terrainAt(x, y) === "water" && gen.terrainAt(x - 1, y) === "grass") lake = { x, y };
+			}
+		}
+		if (!lake || !world.me) throw new Error("no shore near the origin for this seed");
+		world.me.x = lake.x - 1;
+		world.me.y = lake.y;
+		world.predictMove("right", 1);
+		expect(world.me).toMatchObject({ x: lake.x, y: lake.y });
+	});
+});

@@ -22,6 +22,7 @@ import {
 	drawLogIcon,
 	drawMeatIcon,
 	drawPotatoIcon,
+	drawRipple,
 	drawSparkleSheet,
 } from "../art/effects";
 import { drawGround, T } from "../art/ground";
@@ -100,6 +101,7 @@ export function createStaticTextures(scene: Phaser.Scene): void {
 	}
 	addCanvasTexture(scene, "chip", 2, 2, drawChip);
 	addCanvasTexture(scene, "dust", 4, 3, drawDust);
+	addCanvasTexture(scene, "ripple", 16, 4, drawRipple);
 	addCanvasTexture(scene, "glint", 3, 1, drawGlint);
 	addCanvasTexture(scene, "axe", 8, 8, drawAxe);
 	const frames = (key: string, count: number) =>

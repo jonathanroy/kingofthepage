@@ -16,7 +16,8 @@ Numbers marked _(tunable)_ are starting values to adjust during playtesting.
 - **Landscape:** countryside with grass, forests, lakes and hills.
 - **Generation:** procedural, created as players explore. The world uses a single seed, so the same coordinates always produce the same terrain. The world is split into chunks (e.g. 32×32 tiles).
 - **Size:** infinite in all directions. Walking speed is the only practical limit on how far players go.
-- **Movement:** 4-directional, one tile at a time. Water (lakes), hills and trees can't be walked on; players walk on grass and on the stumps of chopped trees.
+- **Movement:** 4-directional, one tile at a time. Hills and trees can't be walked on; players walk on grass and on the stumps of chopped trees.
+- **Swimming:** players can swim across water (lakes) at half walking speed _(tunable)_. Nothing can be built on water, nobody spawns in it, and creatures can't swim, so lakes still stop animals and zombie bears.
 - **Presence:** all online players are visible to each other in real time. Offline characters are not shown.
 
 ### Players and spawning
@@ -129,6 +130,7 @@ _(All values tunable.)_
 
 - Only the owner (and allies through gates) can enter claimed land.
 - Players inside an area when it gets closed are **not** teleported out. They are trapped inside.
+- Water still counts as a wall for enclosures even though players can swim. A swimmer can't climb onto someone else's claimed shore (allies can). A player trapped in land that borders water can swim out.
 
 ### Breach
 

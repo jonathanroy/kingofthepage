@@ -69,6 +69,8 @@ export const ENCLOSURE = {
 /** Movement and action pacing. Walking speed is what bounds exploration (§1). */
 export const PACE = {
 	moveIntervalMs: 150,
+	/** §1 Swimming: one tile of water takes this long, so lakes are a detour, not a highway. */
+	swimMoveIntervalMs: 300,
 	actionIntervalMs: 250,
 } as const;
 

@@ -1,7 +1,7 @@
 import type { Forage } from "../world/forage";
 import type { MineSize } from "../world/mines";
 import type { Terrain } from "../world/terrain";
-import { FORAGE, TREE } from "./config";
+import { FORAGE, PACE, TREE } from "./config";
 import type { AllyCheck, Fence, PlayerId } from "./types";
 
 /** What the server stores on top of the generated terrain for one tile. */
@@ -100,6 +100,21 @@ export function isWalkableFor(tile: Tile, playerId: PlayerId, isAlly: AllyCheck)
 		return tile.fence.gate && (tile.fence.ownerId === playerId || isAlly(tile.fence.ownerId));
 	}
 	return isWalkable(tile);
+}
+
+/** §1 Swimming: players can cross water, though nothing can be built or spawned on it. */
+export function isSwimmable(tile: Tile): boolean {
+	return tile.kind === "water";
+}
+
+/** Where a player may step: walkable ground, their gates, or water to swim through. */
+export function canMoveOnto(tile: Tile, playerId: PlayerId, isAlly: AllyCheck): boolean {
+	return isWalkableFor(tile, playerId, isAlly) || isSwimmable(tile);
+}
+
+/** How long a step onto this tile takes (§1): swimming is slower than walking. */
+export function moveIntervalFor(tile: Tile): number {
+	return isSwimmable(tile) ? PACE.swimMoveIntervalMs : PACE.moveIntervalMs;
 }
 
 /**

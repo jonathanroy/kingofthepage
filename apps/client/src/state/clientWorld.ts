@@ -9,8 +9,8 @@ import type {
 } from "@kotp/shared/protocol";
 import {
 	type AllyCheck,
+	canMoveOnto,
 	type Fence,
-	isWalkableFor,
 	NETWORK,
 	resolveTile,
 	type Tile,
@@ -331,7 +331,7 @@ export class ClientWorld {
 		me.facing = dir;
 		this.changes.meChanged = true;
 		const to = stepToward(me.x, me.y, dir);
-		const walkable = isWalkableFor(this.tileAt(to.x, to.y), me.id, this.isAlly);
+		const walkable = canMoveOnto(this.tileAt(to.x, to.y), me.id, this.isAlly);
 		const shopHere = this.shop?.x === to.x && this.shop?.y === to.y;
 		if (!this.isLoaded(to.x, to.y) || !walkable || this.creatureAt(to.x, to.y) || shopHere) {
 			return;

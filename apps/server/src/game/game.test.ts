@@ -103,8 +103,8 @@ describe("movement (§1, §5 Access)", () => {
 		expect(c.last("moved")).toMatchObject({ seq: 2, x: 2 });
 	});
 
-	it("is blocked by water, hills and trees", () => {
-		const h = createHarness({ "1,0": "water", "0,1": "hill", "-1,0": "tree" });
+	it("is blocked by hills, trees and rocks", () => {
+		const h = createHarness({ "1,0": "hill", "0,1": "tree" }, {}, { "-1,0": 50 });
 		const c = h.client();
 		const id = c.join("Marco");
 		h.relocate(id, 0, 0, "down");
@@ -345,5 +345,67 @@ describe("persistence", () => {
 
 	it("respects the configured maximum enclosure area", () => {
 		expect(ENCLOSURE.maxArea).toBeGreaterThan(9);
+	});
+});
+
+describe("swimming (§1 Movement)", () => {
+	const lake = { "1,0": "water", "2,0": "water", "3,0": "water" } as const;
+
+	it("crosses water at swimming pace", () => {
+		const h = createHarness(lake);
+		const c = h.client();
+		const id = c.join("Marco");
+		h.relocate(id, 0, 0, "right");
+		c.send({ type: "move", dir: "right", seq: 1 });
+		h.tick();
+		expect(c.last("moved")).toMatchObject({ seq: 1, x: 1 });
+		// The next stroke waits for the slower swim interval.
+		c.send({ type: "move", dir: "right", seq: 2 });
+		h.advance(STEP);
+		expect(h.world.playerById(id)?.x).toBe(1);
+		h.advance(PACE.swimMoveIntervalMs - STEP);
+		expect(h.world.playerById(id)?.x).toBe(2);
+	});
+
+	it("can't climb onto someone else's claimed shore", () => {
+		// Owner's land (x 5..6, y -1..1) is closed by fences on three sides and the lake on the west.
+		const features: Record<string, "water"> = {};
+		for (let y = -3; y <= 3; y++) features[`4,${y}`] = "water";
+		const h = createHarness(features);
+		const ownerId = h.client().join("Owner");
+		const owner = h.world.playerById(ownerId);
+		if (owner) owner.wood = 1000;
+		const fences: [number, number, number, number, "up" | "down" | "left"][] = [
+			...[5, 6, 7].map((x) => [x, -2, x, -3, "down"] as [number, number, number, number, "down"]),
+			...[5, 6, 7].map((x) => [x, 2, x, 3, "up"] as [number, number, number, number, "up"]),
+			...[-1, 0, 1].map((y) => [7, y, 8, y, "left"] as [number, number, number, number, "left"]),
+		];
+		let t = h.now();
+		for (const [, , sx, sy, facing] of fences) {
+			h.world.relocate(ownerId, sx, sy, facing);
+			t += 1000;
+			expect(h.world.build(ownerId, t).ok).toBe(true);
+		}
+		h.skip(t - h.now());
+		expect(h.world.land.enclosuresAt(5, 0)).toHaveLength(1);
+		const swimmer = h.client();
+		const swimmerId = swimmer.join("Swimmer");
+		h.relocate(swimmerId, 4, 0, "right");
+		h.skip(10_000);
+		expect(h.world.move(swimmerId, "right", h.now())).toMatchObject({
+			ok: false,
+			reason: "noAccess",
+		});
+	});
+
+	it("still treats water as a wall for enclosures and can't build on it", () => {
+		const h = createHarness(lake);
+		const c = h.client();
+		const id = c.join("Marco");
+		const p = h.world.playerById(id);
+		if (p) p.wood = 100;
+		h.relocate(id, 0, 0, "right");
+		expect(h.world.build(id, h.now())).toMatchObject({ ok: false });
+		expect(h.world.tileAt(1, 0, h.now()).kind).toBe("water");
 	});
 });

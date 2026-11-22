@@ -19,6 +19,7 @@ import {
 	canBuy,
 	canEnterTile,
 	canMakeGate,
+	canMoveOnto,
 	canPlaceFence,
 	canUpgradeFence,
 	chopFence,
@@ -45,12 +46,12 @@ import {
 	ironFromHit,
 	isDead,
 	isWalkable,
-	isWalkableFor,
 	LandRegistry,
 	type Look,
 	landScores,
 	makeGate,
 	mineGoldPerMinute,
+	moveIntervalFor,
 	needsAllyConfirmation,
 	nextToSpoil,
 	normalizeHandle,
@@ -448,8 +449,9 @@ export class World {
 		const turnEvents: WorldEvent[] = turned ? [{ kind: "player", id, fromX: p.x, fromY: p.y }] : [];
 
 		const to = stepToward(p.x, p.y, dir);
+		const target = this.tileAt(to.x, to.y, now);
 		if (
-			!isWalkableFor(this.tileAt(to.x, to.y, now), id, this.allyCheck(id)) ||
+			!canMoveOnto(target, id, this.allyCheck(id)) ||
 			this.creatureAt(to.x, to.y) ||
 			this.structureAt(to.x, to.y)
 		) {
@@ -469,7 +471,7 @@ export class World {
 		this.occupy(to.x, to.y, 1);
 		p.x = to.x;
 		p.y = to.y;
-		p.nextMoveAt = now + PACE.moveIntervalMs;
+		p.nextMoveAt = now + moveIntervalFor(target);
 		const events: WorldEvent[] = [{ kind: "player", id, fromX: from.x, fromY: from.y }];
 		// Leaving a stump can let a waiting tree grow back (§2).
 		if (this.getDiff(from.x, from.y)?.choppedAt !== undefined) {
