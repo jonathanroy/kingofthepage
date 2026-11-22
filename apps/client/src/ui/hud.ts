@@ -41,6 +41,11 @@ function iconUrl(
 	return canvas.toDataURL();
 }
 
+/** Thousands separators make large gold and land counts readable (21,600 vs 21600). */
+function formatCount(n: number): string {
+	return Math.floor(n).toLocaleString("en-US");
+}
+
 function el<T extends HTMLElement>(id: string): T {
 	const found = document.getElementById(id);
 	if (!found) throw new Error(`Missing #${id}`);
@@ -176,8 +181,23 @@ export class Hud {
 		el<HTMLImageElement>("icon-compass").src = iconUrl(16, 16, (ctx) =>
 			drawItemPreview(ctx, "royal-banner", "banner"),
 		);
-		el("help").textContent =
-			`Move: arrows/WASD · Tools: Space use (hold) · Q switch · C craft spear (${TOOLS.spearWood} wood, ${TOOLS.spearIron} iron) · Food: E pick/drink · X eat · Build: F fence (${fenceBuildCost()}) · U repair/upgrade · G gate (+${FENCE.gateConversionCost}) · V wardrobe · B base`;
+		// Keys as keycaps in a plain font: the pixel font's small "C" is easily read as "0".
+		const k = (key: string) => `<kbd>${key}</kbd>`;
+		el("help").innerHTML = [
+			`${k("WASD")} move`,
+			`${k("Space")} use tool`,
+			`${k("Q")} switch tool`,
+			`${k("C")} craft spear (${TOOLS.spearWood} wood, ${TOOLS.spearIron} iron)`,
+			`${k("E")} pick / drink / shop`,
+			`${k("X")} eat`,
+			`${k("F")} fence (${fenceBuildCost()})`,
+			`${k("U")} repair / upgrade`,
+			`${k("G")} gate (+${FENCE.gateConversionCost})`,
+			`${k("V")} wardrobe`,
+			`${k("B")} next base`,
+		]
+			.map((item) => `<span>${item}</span>`)
+			.join("");
 		el("confirm-yes").addEventListener("click", () => this.closeConfirm(true));
 		el("confirm-no").addEventListener("click", () => this.closeConfirm(false));
 	}
@@ -233,10 +253,10 @@ export class Hud {
 
 	update(me: Me): void {
 		el("hud-handle").textContent = me.handle;
-		el("hud-wood").textContent = String(me.wood);
-		el("hud-iron").textContent = String(me.iron);
+		el("hud-wood").textContent = formatCount(me.wood);
+		el("hud-iron").textContent = formatCount(me.iron);
 		el("hud-pos").textContent = `${me.x}, ${me.y}`;
-		el("hud-rate").textContent = me.goldPerMinute > 0 ? ` +${me.goldPerMinute}/min` : "";
+		el("hud-rate").textContent = me.goldPerMinute > 0 ? `+${me.goldPerMinute}/min` : "";
 	}
 
 	// ---------- Compass and magic shop (§10) ----------
@@ -365,13 +385,13 @@ export class Hud {
 			el(`food-${food}`).textContent = String(s.pantry[food]);
 		}
 		el("tool").textContent = s.tool === "spear" ? "Spear" : "Axe";
-		el("tool-hint").textContent = s.hasSpear
-			? "Q to switch"
-			: `C: craft spear (${TOOLS.spearWood} wood, ${TOOLS.spearIron} iron)`;
+		el("tool-hint").innerHTML = s.hasSpear
+			? "<kbd>Q</kbd> to switch"
+			: `<kbd>C</kbd> craft a spear (${TOOLS.spearWood} wood, ${TOOLS.spearIron} iron)`;
 	}
 
 	updateGold(gold: number): void {
-		el("hud-gold").textContent = String(Math.floor(gold));
+		el("hud-gold").textContent = formatCount(Math.floor(gold));
 	}
 
 	renderLeaderboard(
@@ -389,12 +409,13 @@ export class Hud {
 				: entries
 						.map(
 							(e, i) =>
-								`<li${e.id === myId ? ' class="me"' : ""}><span>${i + 1}. ${esc(e.handle)}</span><b>${e.value}</b></li>`,
+								`<li${e.id === myId ? ' class="me"' : ""}><span>${i + 1}. ${esc(e.handle)}</span><b>${formatCount(e.value)}</b></li>`,
 						)
 						.join("");
 		el("board-land").innerHTML = list(board.land);
 		el("board-gold").innerHTML = list(board.gold);
-		el("board-you").textContent = `You: ${board.you.land} tiles · ${board.you.gold} gold`;
+		el("board-you").textContent =
+			`You: ${formatCount(board.you.land)} tiles · ${formatCount(board.you.gold)} gold`;
 	}
 
 	renderAlliances(state: {
