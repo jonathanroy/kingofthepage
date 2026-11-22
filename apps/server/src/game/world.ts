@@ -10,9 +10,13 @@ import {
 	type AllyCheck,
 	addFood,
 	agePantry,
+	type Base,
+	basesOf,
 	bearCanClaw,
 	buildFence,
+	type Collectible,
 	type ControllerChange,
+	canBuy,
 	canEnterTile,
 	canMakeGate,
 	canPlaceFence,
@@ -24,6 +28,7 @@ import {
 	type Enclosure,
 	type EnclosureChanges,
 	emptyPantry,
+	equip as equipItem,
 	FENCE_LEVELS,
 	type Fence,
 	type FenceAt,
@@ -42,6 +47,7 @@ import {
 	isWalkable,
 	isWalkableFor,
 	LandRegistry,
+	type Look,
 	landScores,
 	makeGate,
 	mineGoldPerMinute,
@@ -53,6 +59,7 @@ import {
 	type Pantry,
 	recomputeOwnerEnclosures,
 	resolveTile,
+	type Slot,
 	type Survival,
 	settleMineGold,
 	spendWork,
@@ -108,6 +115,10 @@ export type PlayerState = {
 	pantry: Pantry;
 	hasSpear: boolean;
 	tool: Tool;
+	/** §10: gold spent at the magic shop. Balance = gold - goldSpent; the leaderboard uses gold. */
+	goldSpent: number;
+	owned: string[];
+	look: Look;
 };
 
 /** Something clients may need to hear about. The game routes these by interest. */
@@ -118,6 +129,10 @@ export type WorldEvent =
 	| { readonly kind: "inventory"; readonly id: string }
 	/** Meters, food or tools of this player changed (§8, §9). */
 	| { readonly kind: "status"; readonly id: string }
+	/** This player's bases changed (§10 compass). */
+	| { readonly kind: "bases"; readonly id: string }
+	/** This player's collectibles changed (§10). */
+	| { readonly kind: "collection"; readonly id: string }
 	| { readonly kind: "notice"; readonly id: string; readonly notice: Notice }
 	/** A creature appeared, moved or was hurt (§9). */
 	| {
@@ -184,6 +199,8 @@ export class World {
 	private readonly occupancy = new Map<string, number>();
 	/** Set by the wildlife system: players can't walk into a creature (§9). */
 	private creatureAt: (x: number, y: number) => boolean = () => false;
+	/** Set by the game: the magic shop is a solid tile nobody walks or builds on (§10). */
+	private structureAt: (x: number, y: number) => boolean = () => false;
 
 	private readonly dirtyPlayers = new Set<string>();
 	private readonly dirtyTiles = new Map<string, TileCoord>();
@@ -204,6 +221,7 @@ export class World {
 				nextMoveAt: 0,
 				nextActionAt: 0,
 				survival: { health: p.health, food: p.food, water: p.water },
+				owned: [...p.owned],
 			});
 		for (const f of snapshot.fences) {
 			this.setDiff(f.x, f.y, {
@@ -382,6 +400,9 @@ export class World {
 			pantry: emptyPantry(),
 			hasSpear: false,
 			tool: "axe",
+			goldSpent: 0,
+			owned: [],
+			look: {},
 			online: false,
 			nextMoveAt: 0,
 			nextActionAt: 0,
@@ -413,7 +434,7 @@ export class World {
 	}
 
 	playerInfo(p: PlayerState): PlayerInfo {
-		return { id: p.id, handle: p.handle, x: p.x, y: p.y, facing: p.facing };
+		return { id: p.id, handle: p.handle, x: p.x, y: p.y, facing: p.facing, look: p.look };
 	}
 
 	// ---------- Intents (§1 movement, §2 chopping, §3 fences) ----------
@@ -429,7 +450,8 @@ export class World {
 		const to = stepToward(p.x, p.y, dir);
 		if (
 			!isWalkableFor(this.tileAt(to.x, to.y, now), id, this.allyCheck(id)) ||
-			this.creatureAt(to.x, to.y)
+			this.creatureAt(to.x, to.y) ||
+			this.structureAt(to.x, to.y)
 		) {
 			return { ok: false, reason: "blocked", events: turnEvents };
 		}
@@ -600,6 +622,66 @@ export class World {
 		this.creatureAt = lookup;
 	}
 
+	setStructureLookup(lookup: (x: number, y: number) => boolean): void {
+		this.structureAt = lookup;
+	}
+
+	// ---------- Compass and magic shop (§10) ----------
+
+	bases(id: string): Base[] {
+		return basesOf(this.land.enclosuresOf(id));
+	}
+
+	/** Spendable gold, settled first so it's exact. */
+	balance(id: string, now: number): number {
+		this.settlePlayerGold(id, now);
+		const p = this.requirePlayer(id);
+		return p.gold - p.goldSpent;
+	}
+
+	/** Buy one of today's collectibles while facing the shop at `shopAt`. */
+	buy(
+		id: string,
+		itemId: string,
+		offer: readonly Collectible[],
+		shopAt: TileCoord,
+		now: number,
+	): ActionResult {
+		const p = this.requirePlayer(id);
+		const facing = stepToward(p.x, p.y, p.facing);
+		if (facing.x !== shopAt.x || facing.y !== shopAt.y)
+			return { ok: false, reason: "notAtShop", events: [] };
+		const check = canBuy(offer, itemId, p.owned, this.balance(id, now));
+		if (!check.ok) return { ok: false, reason: check.reason, events: [] };
+		p.goldSpent += check.price;
+		p.owned = [...p.owned, itemId];
+		this.dirtyPlayers.add(id);
+		return {
+			ok: true,
+			events: [
+				{ kind: "inventory", id },
+				{ kind: "collection", id },
+				{ kind: "notice", id, notice: { kind: "bought", itemId } },
+			],
+		};
+	}
+
+	/** Wear an owned collectible, or clear a slot. Everyone nearby sees the change. */
+	equip(id: string, slot: Slot, itemId: string | null): ActionResult {
+		const p = this.requirePlayer(id);
+		const look = equipItem(p.look, p.owned, slot, itemId);
+		if (!look) return { ok: false, reason: "notOwned", events: [] };
+		p.look = look;
+		this.dirtyPlayers.add(id);
+		return {
+			ok: true,
+			events: [
+				{ kind: "player", id, fromX: p.x, fromY: p.y },
+				{ kind: "collection", id },
+			],
+		};
+	}
+
 	/** Every work action makes the player hungrier and thirstier. */
 	private work(p: PlayerState): void {
 		p.survival = spendWork(p.survival);
@@ -744,7 +826,7 @@ export class World {
 
 	/** Open, unoccupied ground a creature may step onto. */
 	isOpenForCreature(x: number, y: number, now: number): boolean {
-		return isWalkable(this.tileAt(x, y, now)) && !this.isOccupied(x, y);
+		return isWalkable(this.tileAt(x, y, now)) && !this.isOccupied(x, y) && !this.structureAt(x, y);
 	}
 
 	/**
@@ -787,7 +869,8 @@ export class World {
 		const tile = this.tileAt(target.x, target.y, now);
 		p.nextActionAt = now + PACE.actionIntervalMs;
 
-		const placement = canPlaceFence(tile, this.isOccupied(target.x, target.y), p.wood);
+		const blocked = this.isOccupied(target.x, target.y) || this.structureAt(target.x, target.y);
+		const placement = canPlaceFence(tile, blocked, p.wood);
 		if (!placement.ok) return { ok: false, reason: placement.reason, events: [] };
 
 		p.wood -= fenceBuildCost();
@@ -810,6 +893,7 @@ export class World {
 		fences: FenceInfo[];
 		ore: [number, number, number][];
 		harvested: [number, number, number][];
+		royal: string[];
 		control: ChunkControl;
 		handles: Record<string, string>;
 	} {
@@ -838,11 +922,15 @@ export class World {
 			}
 		}
 		const handleIds = new Set([...owners, ...fences.map((f) => f.ownerId)]);
+		const royal = [...new Set(fences.map((f) => f.ownerId))].filter(
+			(id) => this.players.get(id)?.look.banner === "royal-banner",
+		);
 		return {
 			chopped,
 			fences,
 			ore,
 			harvested,
+			royal,
 			control: { owners, cells: any ? cells : null },
 			handles: this.handlesFor(handleIds),
 		};
@@ -892,8 +980,11 @@ export class World {
 		}
 		for (const e of changes.added) this.enclosuresAdded.set(e.id, toStoredEnclosure(e));
 		const controllerChanges = this.land.apply(changes);
-		if (controllerChanges.length === 0) return [];
+		const basesChanged = changes.added.length + changes.removed.length > 0;
+		const basesEvent: WorldEvent[] = basesChanged ? [{ kind: "bases", id: ownerId }] : [];
+		if (controllerChanges.length === 0) return basesEvent;
 		return [
+			...basesEvent,
 			{ kind: "control", changes: controllerChanges },
 			...this.updateMineControl(controllerChanges, now),
 		];
@@ -902,7 +993,7 @@ export class World {
 	// ---------- Gold mines (§6) ----------
 
 	/**
-	 * §10: when a mine's controller changes, pay out the old controller first, then start
+	 * §11: when a mine's controller changes, pay out the old controller first, then start
 	 * the new one's clock. Returns inventory events for everyone whose income changed.
 	 */
 	private updateMineControl(changes: readonly ControllerChange[], now: number): WorldEvent[] {
@@ -1093,6 +1184,9 @@ function toStoredPlayer(p: PlayerState): StoredPlayer {
 		pantry: p.pantry,
 		hasSpear: p.hasSpear,
 		tool: p.tool,
+		goldSpent: p.goldSpent,
+		owned: p.owned,
+		look: p.look,
 		createdAt: p.createdAt,
 		lastSeenAt: p.lastSeenAt,
 	};

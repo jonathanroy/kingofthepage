@@ -2,6 +2,7 @@ import type {
 	CreatureInfo,
 	FenceInfo,
 	FoodCounts,
+	LookInfo,
 	PlayerInfo,
 	PlayerRef,
 	ServerMessage,
@@ -65,7 +66,21 @@ export type Changes = {
 	readonly creatures: Set<string>;
 	readonly creaturesRemoved: Set<string>;
 	statusChanged: boolean;
+	shopChanged: boolean;
+	basesChanged: boolean;
+	collectionChanged: boolean;
+	/** Owners whose walls fly the royal banner changed (§10). */
+	royalChanged: boolean;
 };
+
+export type ShopView = {
+	readonly x: number;
+	readonly y: number;
+	readonly offer: readonly { readonly id: string; readonly price: number }[];
+	readonly movesAt: number;
+};
+
+export type Base = { readonly x: number; readonly y: number; readonly area: number };
 
 /** §8, §9: the local player's meters, carried food and tools. */
 export type Status = {
@@ -90,6 +105,10 @@ function emptyChanges(): Changes {
 		creatures: new Set(),
 		creaturesRemoved: new Set(),
 		statusChanged: false,
+		shopChanged: false,
+		basesChanged: false,
+		collectionChanged: false,
+		royalChanged: false,
 	};
 }
 
@@ -112,6 +131,11 @@ export class ClientWorld {
 	readonly isAlly: AllyCheck = (id) => this.alliances.allies.some((a) => a.id === id);
 	readonly creatures = new Map<string, CreatureInfo>();
 	status: Status | null = null;
+	shop: ShopView | null = null;
+	bases: Base[] = [];
+	collection: { owned: string[]; equipped: LookInfo } = { owned: [], equipped: {} };
+	/** Players whose walls fly the royal banner (§10). */
+	readonly royal = new Set<string>();
 	private serverOffset = 0;
 	private pending: PendingMove[] = [];
 	private changes = emptyChanges();
@@ -166,6 +190,7 @@ export class ClientWorld {
 					break;
 				}
 				this.players.set(msg.player.id, msg.player);
+				this.setRoyal(msg.player.id, msg.player.look.banner === "royal-banner");
 				this.handles.set(msg.player.id, msg.player.handle);
 				this.changes.players.add(msg.player.id);
 				break;
@@ -207,6 +232,24 @@ export class ClientWorld {
 				break;
 			case "creatureGone":
 				if (this.creatures.delete(msg.id)) this.changes.creaturesRemoved.add(msg.id);
+				break;
+			case "shop":
+				this.shop = { x: msg.x, y: msg.y, offer: msg.offer, movesAt: msg.movesAt };
+				this.changes.shopChanged = true;
+				break;
+			case "shopGone":
+				this.shop = null;
+				this.changes.shopChanged = true;
+				break;
+			case "bases":
+				this.bases = [...msg.bases];
+				this.changes.basesChanged = true;
+				break;
+			case "collection":
+				this.collection = { owned: [...msg.owned], equipped: msg.equipped };
+				if (this.me) this.setRoyal(this.me.id, msg.equipped.banner === "royal-banner");
+				this.changes.collectionChanged = true;
+				this.changes.meChanged = true;
 				break;
 			case "respawned":
 				if (this.me) {
@@ -289,7 +332,8 @@ export class ClientWorld {
 		this.changes.meChanged = true;
 		const to = stepToward(me.x, me.y, dir);
 		const walkable = isWalkableFor(this.tileAt(to.x, to.y), me.id, this.isAlly);
-		if (!this.isLoaded(to.x, to.y) || !walkable || this.creatureAt(to.x, to.y)) {
+		const shopHere = this.shop?.x === to.x && this.shop?.y === to.y;
+		if (!this.isLoaded(to.x, to.y) || !walkable || this.creatureAt(to.x, to.y) || shopHere) {
 			return;
 		}
 		// Approximates §5 Access with controllers only; the server decides with full enclosures.
@@ -349,6 +393,7 @@ export class ClientWorld {
 			}
 		}
 		for (const [id, h] of Object.entries(msg.handles)) this.handles.set(id, h);
+		for (const id of msg.royal) this.setRoyal(id, true);
 		const existed = this.chunks.has(key);
 		this.chunks.set(key, chunk);
 		if (existed) this.changes.chunksRemoved.push(key);
@@ -408,6 +453,10 @@ export class ClientWorld {
 		for (const [id, p] of this.players) {
 			if (!this.isLoaded(p.x, p.y)) this.removePlayer(id);
 		}
+		if (this.shop && !this.isLoaded(this.shop.x, this.shop.y)) {
+			this.shop = null;
+			this.changes.shopChanged = true;
+		}
 		for (const [id, c] of this.creatures) {
 			if (this.isLoaded(c.x, c.y)) continue;
 			this.creatures.delete(id);
@@ -426,6 +475,13 @@ export class ClientWorld {
 
 	private diffAt(x: number, y: number): TileDiff | undefined {
 		return this.chunkOf(x, y)?.diffs.get(tileKey(x, y));
+	}
+
+	private setRoyal(id: string, royal: boolean): void {
+		if (royal === this.royal.has(id)) return;
+		if (royal) this.royal.add(id);
+		else this.royal.delete(id);
+		this.changes.royalChanged = true;
 	}
 
 	creatureAt(x: number, y: number): CreatureInfo | null {

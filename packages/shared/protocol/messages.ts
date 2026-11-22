@@ -38,6 +38,15 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("eat"), seq }),
 	/** §9: craft a spear. */
 	z.object({ type: z.literal("craftSpear"), seq }),
+	/** §10: buy one of today's collectibles while facing the magic shop. */
+	z.object({ type: z.literal("buy"), itemId: z.string().max(64), seq }),
+	/** §10: wear an owned collectible, or take a slot off with itemId null. */
+	z.object({
+		type: z.literal("equip"),
+		slot: z.enum(["hat", "cape", "pet", "aura", "name", "banner"]),
+		itemId: z.string().max(64).nullable(),
+		seq,
+	}),
 	/** §9: choose what the chop key uses. */
 	z.object({ type: z.literal("selectTool"), tool: z.enum(["axe", "spear"]), seq }),
 ]);
@@ -48,12 +57,18 @@ export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
 export type Facing = z.infer<typeof DirectionSchema>;
 
+/** Collectibles a player wears, one per slot (§10). */
+export type LookInfo = Readonly<
+	Partial<Record<"hat" | "cape" | "pet" | "aura" | "name" | "banner", string>>
+>;
+
 export type PlayerInfo = {
 	readonly id: string;
 	readonly handle: string;
 	readonly x: number;
 	readonly y: number;
 	readonly facing: Facing;
+	readonly look: LookInfo;
 };
 
 export type FenceInfo = {
@@ -98,6 +113,7 @@ export type Notice =
 	| { readonly kind: "allianceFormed"; readonly with: PlayerRef }
 	| { readonly kind: "allianceEnded"; readonly with: PlayerRef }
 	| { readonly kind: "bearComing" }
+	| { readonly kind: "bought"; readonly itemId: string }
 	| { readonly kind: "died"; readonly cause: "starved" | "bear" }
 	| { readonly kind: "ate"; readonly food: "apple" | "berries" | "potato" | "meat" }
 	| { readonly kind: "spoiled"; readonly food: "apple" | "berries" | "potato" | "meat" }
@@ -138,7 +154,12 @@ export type ActionRejectReason =
 	| "alreadyHaveSpear"
 	| "useAxe"
 	| "useSpear"
-	| "nothingToHit";
+	| "nothingToHit"
+	| "notForSale"
+	| "alreadyOwned"
+	| "notEnoughGold"
+	| "notAtShop"
+	| "notOwned";
 
 export type ServerMessage =
 	| {
@@ -173,6 +194,8 @@ export type ServerMessage =
 			readonly ore: readonly (readonly [number, number, number])[];
 			readonly control: ChunkControl;
 			readonly handles: Readonly<Record<string, string>>;
+			/** Owners in this chunk whose walls fly the royal banner (§10). */
+			readonly royal: readonly string[];
 	  }
 	| {
 			readonly type: "tile";
@@ -238,6 +261,22 @@ export type ServerMessage =
 	  }
 	| { readonly type: "creature"; readonly creature: CreatureInfo }
 	| { readonly type: "creatureGone"; readonly id: string }
+	/** §10: the receiving player's bases, largest first, for the flag compass. */
+	| {
+			readonly type: "bases";
+			readonly bases: readonly { readonly x: number; readonly y: number; readonly area: number }[];
+	  }
+	/** §10: the magic shop, sent only to players whose view includes it. */
+	| {
+			readonly type: "shop";
+			readonly x: number;
+			readonly y: number;
+			readonly offer: readonly { readonly id: string; readonly price: number }[];
+			readonly movesAt: number;
+	  }
+	| { readonly type: "shopGone" }
+	/** §10: what the receiving player owns and wears. */
+	| { readonly type: "collection"; readonly owned: readonly string[]; readonly equipped: LookInfo }
 	/** After dying, the player starts again here (§8). */
 	| { readonly type: "respawned"; readonly x: number; readonly y: number; readonly facing: Facing }
 	| { readonly type: "rejected"; readonly seq: number; readonly reason: ActionRejectReason };

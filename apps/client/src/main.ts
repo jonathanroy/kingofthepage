@@ -33,6 +33,16 @@ async function startGame(): Promise<void> {
 		onStatusChanged: () => {
 			if (world.status) hud.updateStatus(world.status);
 		},
+		openShop: () => {
+			if (world.shop) {
+				hud.openShop(world.shop, world.collection.owned, world.liveGold(), world.serverNow());
+			}
+		},
+		openWardrobe: () => hud.openWardrobe(world.collection.owned, world.collection.equipped),
+		cycleBase: () => hud.cycleBase(),
+		onCompassChanged: () => {
+			if (world.me) hud.updateCompass(world.me, world.bases);
+		},
 	});
 	game = new Phaser.Game({
 		type: Phaser.AUTO,
@@ -73,6 +83,14 @@ const connection = new Connection({
 			case "notice":
 				hud.notice(msg.notice);
 				break;
+			case "collection":
+				// Refresh an open shop or wardrobe so Buy/Wear buttons match what's owned now.
+				if (hud.modalOpen && world.shop && !document.getElementById("shop")?.hidden) {
+					hud.openShop(world.shop, world.collection.owned, world.liveGold(), world.serverNow());
+				} else if (hud.modalOpen) {
+					hud.openWardrobe(world.collection.owned, world.collection.equipped);
+				}
+				break;
 			case "alliances":
 				hud.renderAlliances(world.alliances);
 				break;
@@ -109,4 +127,12 @@ hud.onAlliance({
 	end: (playerId) => connection.send({ type: "allyEnd", playerId }),
 });
 hud.onTypingChange((typing) => scene?.setKeyboardEnabled(!typing));
+hud.onShop(
+	{
+		buy: (itemId) => connection.send({ type: "buy", itemId, seq: connection.nextSeq() }),
+		equip: (slot, itemId) =>
+			connection.send({ type: "equip", slot, itemId, seq: connection.nextSeq() }),
+	},
+	(open) => scene?.setKeyboardEnabled(!open),
+);
 connection.open();

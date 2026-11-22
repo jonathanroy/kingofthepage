@@ -7,6 +7,7 @@ import {
 import { checkHandle, LEADERBOARD, NETWORK, SURVIVAL } from "@kotp/shared/rules";
 import { type ChunkCoord, chunkKey, chunkOfTile, type Direction } from "@kotp/shared/world";
 import { suggestHandle } from "./names";
+import { MagicShop, type ShopState } from "./shop";
 import { findSpawnTile } from "./spawn";
 import { Wildlife } from "./wildlife";
 import type { ActionResult, PlayerState, World, WorldEvent } from "./world";
@@ -36,7 +37,9 @@ type Intent = Extract<
 			| "interact"
 			| "eat"
 			| "craftSpear"
-			| "selectTool";
+			| "selectTool"
+			| "buy"
+			| "equip";
 	}
 >;
 
@@ -59,9 +62,13 @@ export class Game {
 	private readonly sessionByPlayer = new Map<string, string>();
 
 	readonly wildlife: Wildlife;
+	readonly shop: MagicShop;
+	private shopDay = -1;
 	private lastSurvivalTick = 0;
 
 	constructor(private readonly deps: GameDeps) {
+		this.shop = new MagicShop(deps.world, deps.seed);
+		deps.world.setStructureLookup((x, y) => this.shop.isAt(x, y, deps.now()));
 		this.wildlife = new Wildlife(deps.world, {
 			random: deps.random,
 			newId: deps.newId,
@@ -141,7 +148,9 @@ export class Game {
 					intent.type === "turn" ||
 					intent.type === "eat" ||
 					intent.type === "craftSpear" ||
-					intent.type === "selectTool";
+					intent.type === "selectTool" ||
+					intent.type === "buy" ||
+					intent.type === "equip";
 				const readyAt = instant
 					? 0
 					: intent.type === "move"
@@ -152,6 +161,7 @@ export class Game {
 				this.runIntent(session, player, intent, now);
 			}
 		}
+		this.moveShopIfDue(now);
 		const wild = this.wildlife.update(now);
 		this.publish(wild.events);
 		for (const id of wild.killed) this.killPlayer(id, "bear");
@@ -241,12 +251,47 @@ export class Game {
 		this.refreshInterest(session, player);
 		this.sendAlliances(player.id);
 		this.sendStatus(player.id);
+		this.sendBases(player.id);
+		this.sendCollection(player.id);
 		this.sendNear(
 			player.x,
 			player.y,
 			{ type: "player", player: this.deps.world.playerInfo(player) },
 			player.id,
 		);
+	}
+
+	// ---------- Compass and magic shop (§10) ----------
+
+	private sendBases(playerId: string): void {
+		this.sessionOf(playerId)?.send({ type: "bases", bases: this.deps.world.bases(playerId) });
+	}
+
+	private sendCollection(playerId: string): void {
+		const p = this.deps.world.playerById(playerId);
+		if (!p) return;
+		this.sessionOf(playerId)?.send({ type: "collection", owned: p.owned, equipped: p.look });
+	}
+
+	private shopMessage(shop: ShopState): ServerMessage {
+		return {
+			type: "shop",
+			x: shop.x,
+			y: shop.y,
+			offer: this.shop.offerInfo(shop),
+			movesAt: shop.movesAt,
+		};
+	}
+
+	/** At midnight UTC the shop vanishes from its old spot and appears at the new one. */
+	private moveShopIfDue(now: number): void {
+		const previous = this.shop.peek();
+		const shop = this.shop.current(now);
+		if (shop.day === this.shopDay) return;
+		this.shopDay = shop.day;
+		if (previous && previous.day !== shop.day)
+			this.sendNear(previous.x, previous.y, { type: "shopGone" });
+		this.sendNear(shop.x, shop.y, this.shopMessage(shop));
 	}
 
 	// ---------- Survival (§8) ----------
@@ -285,19 +330,20 @@ export class Game {
 
 	// ---------- Gold and leaderboards (§6, §7) ----------
 
-	/** Settles the player's mines first: reading a balance is a settlement point (§10). */
+	/** Settles the player's mines first: reading a balance is a settlement point (§11). */
 	private sendInventory(playerId: string): void {
 		const { world } = this.deps;
 		const p = world.playerById(playerId);
 		const s = this.sessionOf(playerId);
 		if (!p || !s) return;
 		const now = this.deps.now();
-		world.settlePlayerGold(playerId, now);
+		// Clients show the spendable balance; the leaderboard keeps ranking gold earned (§10).
+		const balance = world.balance(playerId, now);
 		s.send({
 			type: "inventory",
 			wood: p.wood,
 			iron: p.iron,
-			gold: p.gold,
+			gold: balance,
 			goldPerMinute: world.goldPerMinute(playerId),
 			asOf: now,
 		});
@@ -466,6 +512,14 @@ export class Game {
 			case "selectTool":
 				result = world.selectTool(player.id, intent.tool);
 				break;
+			case "buy": {
+				const shop = this.shop.current(now);
+				result = world.buy(player.id, intent.itemId, shop.offer, shop, now);
+				break;
+			}
+			case "equip":
+				result = world.equip(player.id, intent.slot, intent.itemId);
+				break;
 			case "build":
 				result = world.build(player.id, now);
 				break;
@@ -543,6 +597,12 @@ export class Game {
 				case "status":
 					this.sendStatus(e.id);
 					break;
+				case "bases":
+					this.sendBases(e.id);
+					break;
+				case "collection":
+					this.sendCollection(e.id);
+					break;
 				case "notice":
 					this.sessionOf(e.id)?.send({ type: "notice", notice: e.notice });
 					break;
@@ -602,6 +662,10 @@ export class Game {
 		for (const key of fresh) {
 			const { cx, cy } = wanted.get(key) as ChunkCoord;
 			session.send({ type: "chunk", cx, cy, ...world.chunkSnapshot(cx, cy) });
+		}
+		const shop = this.shop.current(this.deps.now());
+		if (freshSet.has(chunkKey(chunkOfTile(shop.x, shop.y).cx, chunkOfTile(shop.x, shop.y).cy))) {
+			session.send(this.shopMessage(shop));
 		}
 		for (const creature of this.wildlife.all()) {
 			const { cx, cy } = chunkOfTile(creature.x, creature.y);

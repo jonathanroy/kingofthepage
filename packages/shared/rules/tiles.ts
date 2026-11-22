@@ -44,7 +44,7 @@ export type TileExtras = {
 	readonly forage?: Forage | null;
 };
 
-/** §10 Lazy updates: a chopped tree exists again once the regrow delay has passed. */
+/** §11 Lazy updates: a chopped tree exists again once the regrow delay has passed. */
 export function isTreeRegrown(choppedAt: number, now: number): boolean {
 	return now - choppedAt >= TREE.regrowDelayMs;
 }

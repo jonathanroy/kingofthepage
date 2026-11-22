@@ -62,7 +62,7 @@ export type ControllerChange = {
 /**
  * In-memory index of every enclosure, by tile and by owner.
  * The server applies enclosure changes here and gets back the tiles whose controller
- * changed, which is when mine gold must be settled (§10).
+ * changed, which is when mine gold must be settled (§11).
  */
 export class LandRegistry {
 	private readonly byId = new Map<string, Enclosure>();

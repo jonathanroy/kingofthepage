@@ -146,6 +146,111 @@
 				font-size: 12px;
 				color: var(--muted);
 			}
+			#compass {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				font-size: 14px;
+			}
+			#compass .flag {
+				width: 20px;
+				height: 20px;
+				image-rendering: pixelated;
+			}
+			#compass .arrow {
+				display: inline-block;
+				font-size: 16px;
+				color: var(--danger);
+				transition: transform 0.2s ease-out;
+			}
+			.modal {
+				position: fixed;
+				inset: 0;
+				display: grid;
+				place-items: center;
+				background: rgba(43, 34, 51, 0.55);
+				z-index: 25;
+				padding: 16px;
+			}
+			.modal[hidden] {
+				display: none;
+			}
+			.modal .panel {
+				width: min(520px, 100%);
+				max-height: calc(100vh - 64px);
+				overflow-y: auto;
+			}
+			.modal h2 {
+				margin: 0 0 4px;
+				font-size: 22px;
+			}
+			.modal .buttons {
+				display: flex;
+				justify-content: flex-end;
+				margin-top: 10px;
+			}
+			ul.items {
+				list-style: none;
+				margin: 10px 0 0;
+				padding: 0;
+				display: grid;
+				gap: 8px;
+			}
+			ul.items li {
+				display: grid;
+				grid-template-columns: 48px 1fr auto;
+				gap: 10px;
+				align-items: center;
+				padding: 8px;
+				border: 2px solid var(--panel-inner);
+				border-radius: 4px;
+			}
+			ul.items li.muted {
+				display: block;
+			}
+			ul.items .preview {
+				width: 48px;
+				height: 48px;
+				image-rendering: pixelated;
+				background: var(--panel-inner);
+				border-radius: 3px;
+			}
+			ul.items .info {
+				min-width: 0;
+				font-size: 14px;
+			}
+			ul.items .buy {
+				display: grid;
+				gap: 4px;
+				justify-items: end;
+			}
+			ul.items .price {
+				font-variant-numeric: tabular-nums;
+				font-size: 13px;
+			}
+			ul.items button[disabled] {
+				background: var(--panel-inner);
+				cursor: default;
+				box-shadow: none;
+			}
+			.tier {
+				font-size: 12px;
+				padding: 0 6px;
+				border-radius: 3px;
+				background: var(--panel-inner);
+			}
+			.tier-rare .tier {
+				background: #cfe0ff;
+			}
+			.tier-epic .tier {
+				background: #e4d2ff;
+			}
+			.tier-legendary .tier {
+				background: var(--gold);
+			}
+			ul.items li.tier-legendary {
+				border-color: var(--gold);
+			}
 			#status {
 				position: fixed;
 				left: 12px;
@@ -377,6 +482,11 @@
 				<span><img class="icon coin" id="icon-gold" alt="Gold" /> <b id="hud-gold">0</b><span id="hud-rate"></span></span>
 				<span id="hud-pos"></span>
 			</div>
+			<div id="compass">
+				<img class="flag" id="icon-compass" alt="" />
+				<span id="compass-arrow" class="arrow" aria-hidden="true">➜</span>
+				<span id="compass-label">No base yet</span>
+			</div>
 			<div class="help" id="help"></div>
 		</div>
 		<div id="status" class="panel" hidden>
@@ -390,6 +500,21 @@
 				<span><img class="icon" id="icon-meat" alt="Meat" /> <b id="food-meat">0</b></span>
 			</div>
 			<div class="tool-row"><b id="tool">Axe</b> <span id="tool-hint" class="muted"></span></div>
+		</div>
+		<div id="shop" class="modal" hidden>
+			<div class="panel">
+				<h2>✦ The Wandering Shop ✦</h2>
+				<p id="shop-meta" class="muted"></p>
+				<ul id="shop-items" class="items"></ul>
+				<div class="buttons"><button type="button" id="shop-close">Leave</button></div>
+			</div>
+		</div>
+		<div id="wardrobe" class="modal" hidden>
+			<div class="panel">
+				<h2>Wardrobe</h2>
+				<ul id="wardrobe-items" class="items"></ul>
+				<div class="buttons"><button type="button" id="wardrobe-close">Close</button></div>
+			</div>
 		</div>
 		<div id="allies" class="panel" hidden>
 			<form id="ally-form">

@@ -25,6 +25,7 @@ function emptyChunk(cx: number, cy: number): ServerMessage {
 		fences: [],
 		ore: [],
 		harvested: [],
+		royal: [],
 		control: { owners: [], cells: null },
 		handles: {},
 	};
@@ -43,7 +44,7 @@ function setup(serverTime = 5_000) {
 	});
 	world.apply({
 		type: "joined",
-		you: { id: "me", handle: "Me", x: spot.x, y: spot.y, facing: "down" },
+		you: { id: "me", handle: "Me", x: spot.x, y: spot.y, facing: "down", look: {} },
 		token: "t",
 		wood: 0,
 		iron: 0,
@@ -194,6 +195,7 @@ describe("ClientWorld", () => {
 			fences: [],
 			ore: [],
 			harvested: [],
+			royal: [],
 			control: { owners: ["alice"], cells },
 			handles: { alice: "Alice" },
 		});
@@ -205,12 +207,15 @@ describe("ClientWorld", () => {
 
 	it("drops chunks and players that fall outside the interest radius", () => {
 		const { world } = setup();
-		world.apply({ type: "player", player: { id: "p2", handle: "P2", x: 1, y: 1, facing: "down" } });
+		world.apply({
+			type: "player",
+			player: { id: "p2", handle: "P2", x: 1, y: 1, facing: "down", look: {} },
+		});
 		expect(world.players.has("p2")).toBe(true);
 		// The player walks out of view: observers of the old spot get one last update.
 		world.apply({
 			type: "player",
-			player: { id: "p2", handle: "P2", x: 9_999, y: 0, facing: "down" },
+			player: { id: "p2", handle: "P2", x: 9_999, y: 0, facing: "down", look: {} },
 		});
 		expect(world.players.has("p2")).toBe(false);
 

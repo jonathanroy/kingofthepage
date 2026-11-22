@@ -1,4 +1,4 @@
-import type { Pantry, Tool } from "@kotp/shared/rules";
+import type { Look, Pantry, Tool } from "@kotp/shared/rules";
 import type { Direction } from "@kotp/shared/world";
 
 // Only what can't be derived from the seed and these rows is stored (CLAUDE.md Persistence).
@@ -20,6 +20,9 @@ export type StoredPlayer = {
 	readonly pantry: Pantry;
 	readonly hasSpear: boolean;
 	readonly tool: Tool;
+	readonly goldSpent: number;
+	readonly owned: readonly string[];
+	readonly look: Look;
 	readonly createdAt: number;
 	readonly lastSeenAt: number;
 };

@@ -53,6 +53,9 @@ describe.skipIf(!url)("PgStore", () => {
 			pantry: { ...emptyPantry(), apple: { count: 2, spoil: 1000 } },
 			hasSpear: true,
 			tool: "spear" as const,
+			goldSpent: 21_600,
+			owned: ["straw-hat"],
+			look: { hat: "straw-hat" },
 			createdAt: 1000,
 			lastSeenAt: 2000,
 		};
@@ -110,6 +113,9 @@ describe.skipIf(!url)("PgStore", () => {
 			hasSpear: true,
 			tool: "spear",
 			pantry: { apple: { count: 2, spoil: 1000 } },
+			goldSpent: 21_600,
+			owned: ["straw-hat"],
+			look: { hat: "straw-hat" },
 		});
 		expect(snap.enclosures.find((e) => e.id === enclosureId)).toBeUndefined();
 	});

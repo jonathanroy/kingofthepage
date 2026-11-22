@@ -194,3 +194,15 @@ export const CREATURES = {
 	bearSpawnMin: 15,
 	bearSpawnMax: 20,
 } as const;
+
+/** §10 The magic shop. */
+export const SHOP = {
+	/** The shop moves at every multiple of this (midnight UTC). */
+	dayMs: 24 * 60 * 60_000,
+	/** Spots are picked within this many tiles of the world's center. */
+	radius: 380,
+	placementAttempts: 400,
+	/** Prices are measured in days of one small mine. */
+	goldPerDay: 1440,
+	tierDays: { common: 15, rare: 30, epic: 45, legendary: 90 },
+} as const;

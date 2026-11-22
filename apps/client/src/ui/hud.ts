@@ -6,7 +6,17 @@ import type {
 	Notice,
 	PlayerRef,
 } from "@kotp/shared/protocol";
-import { FENCE, fenceBuildCost, HANDLE, TOOLS } from "@kotp/shared/rules";
+import {
+	COLLECTIBLES,
+	collectible,
+	FENCE,
+	fenceBuildCost,
+	HANDLE,
+	SLOTS,
+	type Slot,
+	TOOLS,
+} from "@kotp/shared/rules";
+import { drawItemPreview } from "../art/cosmetics";
 import {
 	drawAppleIcon,
 	drawBerriesIcon,
@@ -54,6 +64,11 @@ const REJECT_TEXT: Partial<Record<ActionRejectReason, string>> = {
 	useAxe: "Switch to your axe (Q) to chop or mine.",
 	useSpear: "Switch to your spear (Q) to hunt.",
 	nothingToHit: "Nothing to hit there.",
+	notForSale: "The shop doesn't sell that today.",
+	alreadyOwned: "You already own that.",
+	notEnoughGold: "Not enough gold.",
+	notAtShop: "Stand next to the shop and face it.",
+	notOwned: "You don't own that item.",
 	maxLevel: "This fence is already at the highest level.",
 	alreadyGate: "That's already a gate.",
 	nothingToUpgrade: "Face one of your fences first.",
@@ -85,6 +100,8 @@ function noticeText(n: Notice): string {
 			return `You and ${n.with.handle} are now allies.`;
 		case "allianceEnded":
 			return `Your alliance with ${n.with.handle} has ended.`;
+		case "bought":
+			return `You bought the ${collectible(n.itemId)?.name ?? "item"}! Press V to wear it.`;
 		case "bearComing":
 			return "A zombie bear is coming! Get behind strong walls or ready your spear.";
 		case "died":
@@ -103,6 +120,22 @@ function noticeText(n: Notice): string {
 				alreadyRequested: "You already sent a request.",
 			}[n.reason];
 	}
+}
+
+export type ShopActions = {
+	buy(itemId: string): void;
+	equip(slot: Slot, itemId: string | null): void;
+};
+
+const TIER_LABEL = {
+	common: "Common",
+	rare: "Rare",
+	epic: "Epic",
+	legendary: "Legendary",
+} as const;
+
+function itemIcon(id: string, slot: string): string {
+	return iconUrl(16, 16, (ctx) => drawItemPreview(ctx, id, slot));
 }
 
 export type AllianceActions = {
@@ -140,8 +173,11 @@ export class Hud {
 		el<HTMLImageElement>("icon-berries").src = iconUrl(7, 6, drawBerriesIcon);
 		el<HTMLImageElement>("icon-potato").src = iconUrl(7, 6, drawPotatoIcon);
 		el<HTMLImageElement>("icon-meat").src = iconUrl(7, 6, drawMeatIcon);
+		el<HTMLImageElement>("icon-compass").src = iconUrl(16, 16, (ctx) =>
+			drawItemPreview(ctx, "royal-banner", "banner"),
+		);
 		el("help").textContent =
-			`Arrows/WASD move · Space use tool (hold) · E pick/drink · X eat · F fence (${fenceBuildCost()}) · U repair/upgrade · G gate (+${FENCE.gateConversionCost})`;
+			`Arrows/WASD move · Space use tool (hold) · E pick/drink/shop · X eat · V wardrobe · B base · F fence (${fenceBuildCost()}) · U repair/upgrade · G gate (+${FENCE.gateConversionCost})`;
 		el("confirm-yes").addEventListener("click", () => this.closeConfirm(true));
 		el("confirm-no").addEventListener("click", () => this.closeConfirm(false));
 	}
@@ -201,6 +237,119 @@ export class Hud {
 		el("hud-iron").textContent = String(me.iron);
 		el("hud-pos").textContent = `${me.x}, ${me.y}`;
 		el("hud-rate").textContent = me.goldPerMinute > 0 ? ` +${me.goldPerMinute}/min` : "";
+	}
+
+	// ---------- Compass and magic shop (§10) ----------
+
+	private compassIndex = 0;
+
+	/** The flag compass: arrow and distance to the selected base. */
+	updateCompass(me: { x: number; y: number }, bases: readonly { x: number; y: number }[]): void {
+		const label = el("compass-label");
+		const arrow = el("compass-arrow");
+		if (bases.length === 0) {
+			label.textContent = "No base yet: close a fence ring";
+			arrow.hidden = true;
+			return;
+		}
+		this.compassIndex %= bases.length;
+		const base = bases[this.compassIndex];
+		if (!base) return;
+		const dx = base.x - me.x;
+		const dy = base.y - me.y;
+		const distance = Math.round(Math.hypot(dx, dy));
+		arrow.hidden = distance === 0;
+		arrow.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+		const which = bases.length > 1 ? ` · base ${this.compassIndex + 1}/${bases.length} (B)` : "";
+		label.textContent = distance === 0 ? `Home${which}` : `${distance} tiles${which}`;
+	}
+
+	cycleBase(): void {
+		this.compassIndex += 1;
+	}
+
+	private shopActions: ShopActions | null = null;
+	private modalHandler: ((open: boolean) => void) | null = null;
+
+	onShop(actions: ShopActions, onModalChange: (open: boolean) => void): void {
+		this.shopActions = actions;
+		this.modalHandler = onModalChange;
+		el("shop-close").addEventListener("click", () => this.closeModals());
+		el("wardrobe-close").addEventListener("click", () => this.closeModals());
+		window.addEventListener("keydown", (e) => {
+			if (e.key === "Escape") this.closeModals();
+		});
+		el("shop-items").addEventListener("click", (e) => {
+			const id = (e.target as HTMLElement).closest("button")?.dataset.buy;
+			if (id) this.shopActions?.buy(id);
+		});
+		el("wardrobe-items").addEventListener("click", (e) => {
+			const button = (e.target as HTMLElement).closest("button");
+			const slot = button?.dataset.slot as Slot | undefined;
+			if (!button || !slot) return;
+			this.shopActions?.equip(slot, button.dataset.item ?? null);
+		});
+	}
+
+	get modalOpen(): boolean {
+		return !el("shop").hidden || !el("wardrobe").hidden;
+	}
+
+	openShop(
+		shop: { offer: readonly { id: string; price: number }[]; movesAt: number },
+		owned: readonly string[],
+		balance: number,
+		serverNow: number,
+	): void {
+		const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+		el("shop-items").innerHTML = shop.offer
+			.map(({ id, price }) => {
+				const item = collectible(id);
+				if (!item) return "";
+				const have = owned.includes(id);
+				const afford = balance >= price;
+				const action = have ? "Owned" : afford ? "Buy" : "Too expensive";
+				return `<li class="tier-${item.tier}">
+					<img class="preview" src="${itemIcon(id, item.slot)}" alt="" />
+					<div class="info"><b>${esc(item.name)}</b> <span class="tier">${TIER_LABEL[item.tier]}</span><br /><span class="muted">${esc(item.description)}</span></div>
+					<div class="buy"><span class="price">${price.toLocaleString()} gold</span><button type="button" data-buy="${id}" ${have || !afford ? "disabled" : ""}>${action}</button></div>
+				</li>`;
+			})
+			.join("");
+		const hours = Math.max(0, Math.ceil((shop.movesAt - serverNow) / 3_600_000));
+		el("shop-meta").textContent =
+			`You have ${Math.floor(balance).toLocaleString()} gold · The shop moves on in about ${hours} h`;
+		this.showModal("shop");
+	}
+
+	openWardrobe(owned: readonly string[], equipped: Partial<Record<Slot, string>>): void {
+		const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+		const items = COLLECTIBLES.filter((c) => owned.includes(c.id));
+		el("wardrobe-items").innerHTML =
+			items.length === 0
+				? `<li class="muted">Nothing yet. Somewhere out there, a wandering shop sells wonders.</li>`
+				: SLOTS.flatMap((slot) =>
+						items
+							.filter((c) => c.slot === slot)
+							.map((c) => {
+								const worn = equipped[slot] === c.id;
+								return `<li class="tier-${c.tier}"><img class="preview" src="${itemIcon(c.id, c.slot)}" alt="" /><div class="info"><b>${esc(c.name)}</b> <span class="tier">${TIER_LABEL[c.tier]}</span></div><button type="button" data-slot="${slot}" ${worn ? "" : `data-item="${c.id}"`}>${worn ? "Take off" : "Wear"}</button></li>`;
+							}),
+					).join("");
+		this.showModal("wardrobe");
+	}
+
+	private showModal(id: "shop" | "wardrobe"): void {
+		el("shop").hidden = id !== "shop";
+		el("wardrobe").hidden = id !== "wardrobe";
+		this.modalHandler?.(true);
+	}
+
+	closeModals(): void {
+		if (!this.modalOpen) return;
+		el("shop").hidden = true;
+		el("wardrobe").hidden = true;
+		this.modalHandler?.(false);
 	}
 
 	/** §8 meters, carried food and the selected tool. */

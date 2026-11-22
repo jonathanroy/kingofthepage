@@ -1,5 +1,7 @@
 export * from "./access";
 export * from "./alliances";
+export * from "./bases";
+export * from "./collectibles";
 export * from "./config";
 export * from "./creatures";
 export * from "./enclosure";

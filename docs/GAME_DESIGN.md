@@ -158,7 +158,7 @@ _(All values tunable.)_
 
 ### Gold usage
 
-For now, gold is only for **bragging rights** on the leaderboard. Future ideas: trading, rewards, cosmetics.
+Gold buys **collectibles at the magic shop** (§10). Spending never lowers the Gold leaderboard, which ranks total gold earned. Each player has a spendable **balance**: gold earned minus gold spent.
 
 ---
 
@@ -228,7 +228,32 @@ _(All values tunable.)_
 
 ---
 
-## 10. Technical notes
+## 10. Compass and the magic shop
+
+### Flag compass
+
+- Every player has a **flag compass** in the HUD. It points to their nearest **base** (one of their enclosures) and shows the distance in tiles.
+- With several bases, a key cycles through them. With none, the compass says so.
+
+### The magic shop
+
+- A **wandering magic shop** appears somewhere in the world and **moves every 24 hours** (at midnight UTC).
+- Its spot is picked from the world seed and the date, on open ground within **380 tiles** of the world's center _(tunable)_, never inside claimed land. There are **no hints**: it's an easter egg, found only by exploring.
+- It's a solid tile; face it and use **interact** to browse.
+- Each day it offers **four collectibles**, one per rarity tier, rotating through the catalog.
+- Collectibles are **purely cosmetic and visible to everyone**: hats, capes, pets that follow their owner, auras, a glowing name and a royal wall banner. Each can be bought once per player and is kept forever (never lost on death). Players choose what to wear.
+- Prices are deliberately steep, measured in days of one small mine (1,440 gold a day) _(tunable)_:
+
+| Tier | Price | About |
+|---|---|---|
+| Common | 21,600 gold | 15 days |
+| Rare | 43,200 gold | 30 days |
+| Epic | 64,800 gold | 45 days |
+| Legendary | 129,600 gold | 90 days |
+
+---
+
+## 11. Technical notes
 
 ### Terrain and storage
 
@@ -259,7 +284,7 @@ _(All values tunable.)_
 
 ---
 
-## 11. MVP scope
+## 12. MVP scope
 
 **Included:** movement, real-time player visibility, procedural terrain, chopping trees, wood inventory, building fences, enclosure detection, colored ownership overlay, breach detection.
 
@@ -269,6 +294,6 @@ _(All values tunable.)_
 
 ---
 
-## 12. Open questions
+## 13. Open questions
 
 - None right now.

@@ -1,4 +1,4 @@
-import type { ClientMessage } from "@kotp/shared/protocol";
+import type { ClientMessage, LookInfo } from "@kotp/shared/protocol";
 import { FENCE_LEVELS, type Fence, PACE } from "@kotp/shared/rules";
 import {
 	CHUNK_SIZE,
@@ -11,6 +11,7 @@ import {
 } from "@kotp/shared/world";
 import Phaser from "phaser";
 import { playerFrame } from "../art/characters";
+import { HAT_OVERHANG } from "../art/cosmetics";
 import { groundKey } from "../art/ground";
 import { shade } from "../art/pixels";
 import { joinsMask, WALL_OVERHANG, type WallJoins, wantsPennant } from "../art/walls";
@@ -32,6 +33,11 @@ export type SceneDeps = {
 	readonly onMeChanged: () => void;
 	/** Meters, food or tools changed (§8, §9). */
 	readonly onStatusChanged: () => void;
+	/** §10: the shop window, the wardrobe, the compass. */
+	readonly openShop: () => void;
+	readonly openWardrobe: () => void;
+	readonly cycleBase: () => void;
+	readonly onCompassChanged: () => void;
 	/** Shows the §4 warning before chopping an ally's fence. */
 	readonly confirm: (text: string) => Promise<boolean>;
 };
@@ -44,7 +50,9 @@ type Action =
 	| "interact"
 	| "eat"
 	| "craftSpear"
-	| "switchTool";
+	| "switchTool"
+	| "wardrobe"
+	| "cycleBase";
 type Input = Direction | Action;
 const ACTIONS: readonly Action[] = [
 	"chop",
@@ -55,6 +63,8 @@ const ACTIONS: readonly Action[] = [
 	"eat",
 	"craftSpear",
 	"switchTool",
+	"wardrobe",
+	"cycleBase",
 ];
 
 type CreatureView = {
@@ -88,6 +98,11 @@ type PlayerView = {
 	readonly container: Phaser.GameObjects.Container;
 	readonly body: Phaser.GameObjects.Image;
 	readonly label: Phaser.GameObjects.Text;
+	/** §10 collectibles worn. */
+	readonly cape: Phaser.GameObjects.Image;
+	readonly hat: Phaser.GameObjects.Image;
+	pet: Phaser.GameObjects.Image | null;
+	look: LookInfo;
 	dir: Direction;
 	moving: boolean;
 };
@@ -125,7 +140,12 @@ export class WorldScene extends Phaser.Scene {
 		eat: Phaser.Input.Keyboard.Key;
 		craftSpear: Phaser.Input.Keyboard.Key;
 		switchTool: Phaser.Input.Keyboard.Key;
+		wardrobe: Phaser.Input.Keyboard.Key;
+		cycleBase: Phaser.Input.Keyboard.Key;
 	};
+	private shopView: { tent: Phaser.GameObjects.Image; sparkle: Phaser.GameObjects.Sprite } | null =
+		null;
+	private lastAuraAt = 0;
 	private readonly creatureViews = new Map<string, CreatureView>();
 	private lastPantry: Record<string, number> | null = null;
 	private nextMoveAt = 0;
@@ -167,6 +187,8 @@ export class WorldScene extends Phaser.Scene {
 			eat: kb.addKey(K.X),
 			craftSpear: kb.addKey(K.C),
 			switchTool: kb.addKey(K.Q),
+			wardrobe: kb.addKey(K.V),
+			cycleBase: kb.addKey(K.B),
 		};
 		// Key "down" events, not per-frame polling: Phaser clears a key's just-pressed
 		// flag on release, so a tap shorter than a frame would otherwise be lost.
@@ -219,11 +241,19 @@ export class WorldScene extends Phaser.Scene {
 			if (this.waitingForConfirm) return;
 			if (next === "chop") {
 				if (!this.sendChop()) return;
+			} else if (next === "wardrobe") {
+				this.deps.openWardrobe();
+			} else if (next === "cycleBase") {
+				this.deps.cycleBase();
+				this.deps.onCompassChanged();
+			} else if (next === "interact" && this.facingShop()) {
+				// §10: interacting with the shop opens its window; buying is a separate intent.
+				this.deps.openShop();
 			} else if (next === "switchTool") {
 				const tool = this.deps.world.status?.tool === "spear" ? "axe" : "spear";
 				this.deps.send({ type: "selectTool", tool, seq: this.deps.nextSeq() });
 			} else if (next !== undefined && (ACTIONS as readonly string[]).includes(next)) {
-				const type = next as Exclude<Action, "chop" | "switchTool">;
+				const type = next as Exclude<Action, "chop" | "switchTool" | "wardrobe" | "cycleBase">;
 				this.deps.send({ type, seq: this.deps.nextSeq() });
 			} else if (next !== undefined) {
 				const dir = next as Direction;
@@ -319,6 +349,12 @@ export class WorldScene extends Phaser.Scene {
 		for (const id of changes.creaturesRemoved) this.destroyCreature(id);
 		for (const id of changes.creatures) this.updateCreature(id);
 		if (changes.statusChanged) this.onStatus();
+		if (changes.shopChanged) this.updateShop();
+		if (changes.royalChanged) this.refreshPennants();
+		if (changes.collectionChanged && this.me && this.deps.world.me) {
+			this.applyLook(this.me, this.deps.world.collection.equipped);
+		}
+		if (changes.basesChanged || changes.meChanged) this.deps.onCompassChanged();
 	}
 
 	// ---------- Ground ----------
@@ -534,7 +570,15 @@ export class WorldScene extends Phaser.Scene {
 				fv.pennant.play({ key: "pennant", startFrame: Math.floor(Math.random() * 2) });
 		}
 		fv.pennant.setPosition(px, y * TILE + postTop);
-		fv.pennant.setTint(ownerColor(fence.ownerId, this.deps.world.me?.id));
+		// §10: owners with the royal banner fly gold crowned pennants instead of their color.
+		const royal = this.deps.world.royal.has(fence.ownerId);
+		const key = royal ? "pennant-royal" : "pennant";
+		if (fv.pennant.texture.key !== key) {
+			fv.pennant.setTexture(key, 0);
+			if (!this.calm) fv.pennant.play(key);
+		}
+		if (royal) fv.pennant.clearTint();
+		else fv.pennant.setTint(ownerColor(fence.ownerId, this.deps.world.me?.id));
 	}
 
 	private destroyFenceView(fv: FenceView): void {
@@ -618,9 +662,22 @@ export class WorldScene extends Phaser.Scene {
 				resolution: 4,
 			})
 			.setOrigin(0.5, 1);
-		const container = this.add.container(x * TILE, y * TILE, [body, label]);
+		const cape = this.add.image(0, 0, "chip").setOrigin(0).setVisible(false);
+		const hat = this.add.image(0, -HAT_OVERHANG, "chip").setOrigin(0).setVisible(false);
+		const container = this.add.container(x * TILE, y * TILE, [cape, body, hat, label]);
 		container.setDepth(DEPTH.player);
-		return { container, body, label, dir, moving: false };
+		const view: PlayerView = {
+			container,
+			body,
+			label,
+			cape,
+			hat,
+			pet: null,
+			look: {},
+			dir,
+			moving: false,
+		};
+		return view;
 	}
 
 	/** Gold for you, green for allies, white for everyone else: allies must stand out (CLAUDE.md). */
@@ -653,6 +710,17 @@ export class WorldScene extends Phaser.Scene {
 		}
 		view.moving = true;
 		this.puffDust(fromX, fromY);
+		if (view.pet) {
+			// The pet trots one step behind, into the tile its owner just left.
+			view.pet.setFlipX(x * TILE > fromX);
+			this.tweens.killTweensOf(view.pet);
+			this.tweens.add({
+				targets: view.pet,
+				x: fromX,
+				y: fromY,
+				duration: PACE.moveIntervalMs + 60,
+			});
+		}
 		this.tweens.add({
 			targets: view.container,
 			x: x * TILE,
@@ -671,6 +739,14 @@ export class WorldScene extends Phaser.Scene {
 		for (const view of all) {
 			view.body.setFrame(playerFrame(view.dir, view.moving ? step : 0));
 		}
+		for (const view of all) {
+			this.orderCape(view);
+			if (view.pet) view.pet.setFrame(view.moving ? Math.floor(time / 150) % 2 : 0);
+		}
+		if (!this.calm && time - this.lastAuraAt > 350) {
+			this.lastAuraAt = time;
+			for (const view of all) if (view.look.aura) this.auraStar(view);
+		}
 		const creatureStep = Math.floor(time / 180) % 2;
 		for (const v of this.creatureViews.values()) v.sprite.setFrame(v.moving ? creatureStep : 0);
 	}
@@ -684,12 +760,81 @@ export class WorldScene extends Phaser.Scene {
 			this.playerViews.set(id, view);
 		}
 		view.dir = p.facing;
+		this.applyLook(view, p.look);
 		this.glide(view, p.x, p.y);
 	}
 
 	private destroyPlayer(id: string): void {
-		this.playerViews.get(id)?.container.destroy();
+		const view = this.playerViews.get(id);
+		view?.pet?.destroy();
+		view?.container.destroy();
 		this.playerViews.delete(id);
+	}
+
+	// ---------- Collectibles (§10) ----------
+
+	/** Hat, cape, pet and glowing name; auras are drawn each frame in `animatePlayers`. */
+	private applyLook(view: PlayerView, look: LookInfo): void {
+		view.look = look;
+		view.hat.setVisible(!!look.hat);
+		if (look.hat) view.hat.setTexture(`hat-${look.hat}`);
+		view.cape.setVisible(!!look.cape);
+		if (look.cape) view.cape.setTexture(`cape-${look.cape}`);
+		if (look.pet && !view.pet) {
+			view.pet = this.add
+				.image(view.container.x - TILE, view.container.y, `pet-${look.pet}`, 0)
+				.setOrigin(0)
+				.setDepth(DEPTH.player - 0.2);
+		}
+		if (view.pet && !look.pet) {
+			view.pet.destroy();
+			view.pet = null;
+		}
+		if (view.pet && look.pet) view.pet.setTexture(`pet-${look.pet}`, 0);
+		const glowing = look.name === "glowing-name";
+		view.label.setShadow(0, 0, "#ffd23f", glowing ? 4 : 0, true, true);
+		if (glowing) view.label.setColor("#fff3b0");
+		this.orderCape(view);
+	}
+
+	/** Seen from behind, the cape covers the back; otherwise it hangs behind the body. */
+	private orderCape(view: PlayerView): void {
+		if (view.dir === "up") view.container.moveAbove(view.cape, view.body);
+		else view.container.moveBelow(view.cape, view.body);
+		view.hat.setFlipX(view.dir === "right");
+	}
+
+	private facingShop(): boolean {
+		const { me, shop } = this.deps.world;
+		if (!me || !shop) return false;
+		const at = stepToward(me.x, me.y, me.facing);
+		return at.x === shop.x && at.y === shop.y;
+	}
+
+	private updateShop(): void {
+		const shop = this.deps.world.shop;
+		this.shopView?.tent.destroy();
+		this.shopView?.sparkle.destroy();
+		this.shopView = null;
+		if (!shop) return;
+		const tent = this.add
+			.image(shop.x * TILE, shop.y * TILE, "shop-tent")
+			.setOrigin(0)
+			.setDepth(DEPTH.fence);
+		const sparkle = this.add
+			.sprite(shop.x * TILE + 7, shop.y * TILE + 2, "sparkle")
+			.setDepth(DEPTH.sparkle + 2);
+		if (!this.calm) sparkle.play("sparkle");
+		this.shopView = { tent, sparkle };
+	}
+
+	private refreshPennants(): void {
+		for (const view of this.chunkViews.values()) {
+			for (const [key, fv] of view.fences) {
+				const [x, y] = parseKey(key);
+				if (fv.pennant) this.setPennant(fv, x, y, fv.fence, true);
+			}
+		}
 	}
 
 	private updateMe(): void {
@@ -870,6 +1015,25 @@ export class WorldScene extends Phaser.Scene {
 				fv.img.setX(x * TILE);
 				fv.cracks.setX(x * TILE);
 			},
+		});
+	}
+
+	/** §10 Starlight Aura: a star drifts up around the wearer. */
+	private auraStar(view: PlayerView): void {
+		const star = this.add
+			.sprite(
+				view.container.x + 2 + Math.random() * 12,
+				view.container.y + 4 + Math.random() * 10,
+				"sparkle",
+			)
+			.setDepth(DEPTH.fx)
+			.play("sparkle");
+		this.tweens.add({
+			targets: star,
+			y: star.y - 8,
+			alpha: 0,
+			duration: 700,
+			onComplete: () => star.destroy(),
 		});
 	}
 

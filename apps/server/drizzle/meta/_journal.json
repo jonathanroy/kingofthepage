@@ -36,6 +36,13 @@
       "when": 1795307031486,
       "tag": "0004_survival",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795308246817,
+      "tag": "0005_magic_shop",
+      "breakpoints": true
     }
   ]
 }
