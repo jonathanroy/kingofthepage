@@ -5,7 +5,13 @@ import {
 	type ServerMessage,
 } from "@kotp/shared/protocol";
 import { checkHandle, LEADERBOARD, NETWORK, SURVIVAL } from "@kotp/shared/rules";
-import { type ChunkCoord, chunkKey, chunkOfTile, type Direction } from "@kotp/shared/world";
+import {
+	type ChunkCoord,
+	chunkKey,
+	chunkOfTile,
+	type Direction,
+	stepToward,
+} from "@kotp/shared/world";
 import { suggestHandle } from "./names";
 import { MagicShop, type ShopState } from "./shop";
 import { findSpawnTile } from "./spawn";
@@ -261,6 +267,11 @@ export class Game {
 		);
 	}
 
+	private axeAtCreature(player: PlayerState): boolean {
+		const at = stepToward(player.x, player.y, player.facing);
+		return this.wildlife.hasCreatureAt(at.x, at.y);
+	}
+
 	// ---------- Compass and magic shop (§10) ----------
 
 	private sendBases(playerId: string): void {
@@ -498,7 +509,10 @@ export class Game {
 				result =
 					player.tool === "spear"
 						? this.wildlife.spearHit(player, now)
-						: world.chop(player.id, now, intent.confirmAlly ?? false);
+						: this.axeAtCreature(player)
+							? // Swinging the axe at an animal: point the player at the spear instead.
+								{ ok: false, reason: player.hasSpear ? "useSpear" : "noSpear", events: [] }
+							: world.chop(player.id, now, intent.confirmAlly ?? false);
 				break;
 			case "interact":
 				result = world.interact(player.id, now);

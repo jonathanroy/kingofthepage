@@ -119,6 +119,18 @@ describe("tools and hunting (§9)", () => {
 		expect(h.game.wildlife.info(rabbit)).toBeNull();
 	});
 
+	it("tells axe users to craft or switch to the spear when facing an animal", () => {
+		const { h, c, p } = solo();
+		h.game.wildlife.spawn("rabbit", 1, 0, h.now());
+		c.send({ type: "chop", seq: 1 });
+		h.tick();
+		expect(c.last("rejected")?.reason).toBe("noSpear");
+		p.hasSpear = true;
+		c.send({ type: "chop", seq: 2 });
+		h.advance(ACT);
+		expect(c.last("rejected")?.reason).toBe("useSpear");
+	});
+
 	it("doesn't let players walk into a creature", () => {
 		const { h, id } = solo();
 		h.game.wildlife.spawn("deer", 1, 0, h.now());

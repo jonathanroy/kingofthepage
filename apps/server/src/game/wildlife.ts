@@ -91,6 +91,10 @@ export class Wildlife {
 			.filter((c): c is CreatureInfo => c !== null);
 	}
 
+	hasCreatureAt(x: number, y: number): boolean {
+		return this.byTile.has(tileKey(x, y));
+	}
+
 	/** Places a creature directly; for tests and admin tools. */
 	spawn(kind: CreatureKind, x: number, y: number, now: number): string {
 		const id = this.deps.newId();

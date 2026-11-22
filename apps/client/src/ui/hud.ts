@@ -62,7 +62,7 @@ const REJECT_TEXT: Partial<Record<ActionRejectReason, string>> = {
 	noSpear: `You don't have a spear yet. Press C to craft one (${TOOLS.spearWood} wood, ${TOOLS.spearIron} iron).`,
 	alreadyHaveSpear: "You already have a spear.",
 	useAxe: "Switch to your axe (Q) to chop or mine.",
-	useSpear: "Switch to your spear (Q) to hunt.",
+	useSpear: "Switch to your spear with Q to hunt.",
 	nothingToHit: "Nothing to hit there.",
 	notForSale: "The shop doesn't sell that today.",
 	alreadyOwned: "You already own that.",
@@ -177,7 +177,7 @@ export class Hud {
 			drawItemPreview(ctx, "royal-banner", "banner"),
 		);
 		el("help").textContent =
-			`Arrows/WASD move · Space use tool (hold) · E pick/drink/shop · X eat · V wardrobe · B base · F fence (${fenceBuildCost()}) · U repair/upgrade · G gate (+${FENCE.gateConversionCost})`;
+			`Move: arrows/WASD · Tools: Space use (hold) · Q switch · C craft spear (${TOOLS.spearWood} wood, ${TOOLS.spearIron} iron) · Food: E pick/drink · X eat · Build: F fence (${fenceBuildCost()}) · U repair/upgrade · G gate (+${FENCE.gateConversionCost}) · V wardrobe · B base`;
 		el("confirm-yes").addEventListener("click", () => this.closeConfirm(true));
 		el("confirm-no").addEventListener("click", () => this.closeConfirm(false));
 	}

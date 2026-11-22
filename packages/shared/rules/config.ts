@@ -158,9 +158,10 @@ export const FOOD = {
 
 /** §8 Foraging: where plants grow (chance per eligible tile), how much a harvest gives, regrowth. */
 export const FORAGE = {
-	apple: { chance: 0.12, yield: 3, regrowMs: 10 * 60_000 },
-	berry: { chance: 0.012, yield: 4, regrowMs: 6 * 60_000 },
-	potato: { chance: 0.006, yield: 2, regrowMs: 20 * 60_000 },
+	// Scarce on purpose: finding food should take some searching, not a few steps.
+	apple: { chance: 0.03, yield: 2, regrowMs: 30 * 60_000 },
+	berry: { chance: 0.005, yield: 3, regrowMs: 20 * 60_000 },
+	potato: { chance: 0.003, yield: 2, regrowMs: 45 * 60_000 },
 } as const;
 
 /** §9 Tools. */
@@ -184,7 +185,7 @@ export const CREATURES = {
 	},
 	/** Bears claw through fences up to this level; higher walls hold them back. */
 	bearMaxFenceLevel: 3,
-	animalsPerPlayer: 4,
+	animalsPerPlayer: 2,
 	animalSpawnMin: 10,
 	animalSpawnMax: 18,
 	/** Animals farther than this from every player are removed. */
