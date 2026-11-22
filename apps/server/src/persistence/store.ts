@@ -23,6 +23,8 @@ export type StoredPlayer = {
 	readonly hasSpear: boolean;
 	readonly tool: Tool;
 	readonly goldSpent: number;
+	/** §9: online play time left before a zombie bear comes; null until first drawn. */
+	readonly bearDueIn: number | null;
 	readonly owned: readonly string[];
 	readonly look: Look;
 	readonly createdAt: number;

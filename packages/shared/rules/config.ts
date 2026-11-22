@@ -201,8 +201,13 @@ export const CREATURES = {
 	animalSpawnMax: 18,
 	/** Animals farther than this from every player are removed. */
 	despawnRange: 40,
-	/** Chance per online player per minute that a zombie bear comes. */
-	bearChancePerMinute: 1 / 40,
+	/**
+	 * Online play time before a zombie bear comes, drawn at random in this range for each
+	 * player. It counts down only while they're online and is saved, so restarts and
+	 * logins don't reset it.
+	 */
+	bearDelayMinMs: 15 * 60_000,
+	bearDelayMaxMs: 35 * 60_000,
 	bearSpawnMin: 15,
 	bearSpawnMax: 20,
 } as const;

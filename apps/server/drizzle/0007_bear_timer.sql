@@ -1,0 +1,1 @@
+ALTER TABLE "players" ADD COLUMN "bear_due_in" bigint;

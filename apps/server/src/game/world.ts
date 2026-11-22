@@ -121,6 +121,8 @@ export type PlayerState = {
 	tool: Tool;
 	/** §10: gold spent at the magic shop. Balance = gold - goldSpent; the leaderboard uses gold. */
 	goldSpent: number;
+	/** §9: online play time left before a zombie bear comes; null until first drawn. */
+	bearDueIn: number | null;
 	owned: string[];
 	look: Look;
 };
@@ -368,6 +370,12 @@ export class World {
 		return id ? this.players.get(id) : undefined;
 	}
 
+	/** §9: the bear countdown is saved with the player so it survives restarts. */
+	setBearDueIn(id: string, ms: number): void {
+		this.requirePlayer(id).bearDueIn = ms;
+		this.dirtyPlayers.add(id);
+	}
+
 	/** Saves the profile with a (hashed) password. */
 	setPasswordHash(id: string, passwordHash: string): void {
 		this.requirePlayer(id).passwordHash = passwordHash;
@@ -421,6 +429,7 @@ export class World {
 			hasSpear: false,
 			tool: "axe",
 			goldSpent: 0,
+			bearDueIn: null,
 			owned: [],
 			look: {},
 			online: false,
@@ -1208,6 +1217,7 @@ function toStoredPlayer(p: PlayerState): StoredPlayer {
 		hasSpear: p.hasSpear,
 		tool: p.tool,
 		goldSpent: p.goldSpent,
+		bearDueIn: p.bearDueIn,
 		owned: p.owned,
 		look: p.look,
 		createdAt: p.createdAt,

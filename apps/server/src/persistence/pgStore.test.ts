@@ -55,6 +55,7 @@ describe.skipIf(!url)("PgStore", () => {
 			hasSpear: true,
 			tool: "spear" as const,
 			goldSpent: 21_600,
+			bearDueIn: 123_456 as number | null,
 			owned: ["straw-hat"],
 			look: { hat: "straw-hat" },
 			createdAt: 1000,
@@ -115,6 +116,7 @@ describe.skipIf(!url)("PgStore", () => {
 			tool: "spear",
 			pantry: { apple: { count: 2, spoil: 1000 } },
 			goldSpent: 21_600,
+			bearDueIn: 123_456 as number | null,
 			owned: ["straw-hat"],
 			look: { hat: "straw-hat" },
 		});

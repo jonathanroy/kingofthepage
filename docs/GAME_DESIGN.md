@@ -225,7 +225,7 @@ _(All values tunable.)_
 
 ### Zombie bears
 
-- A **rare event** _(tunable, about once per 40 minutes of play)_: a zombie bear appears some distance from an online player and walks toward them.
+- A **rare event**: a zombie bear appears some distance from an online player and walks toward them. Each player has a hidden countdown of online play time, drawn at random _(tunable, 15–35 minutes)_. It pauses while they're offline and is saved, so server restarts and logins don't reset it. When it runs out a bear comes and a new countdown is drawn.
 - Bears **claw through fences and gates of levels 1–3**. Walls of **level 4 and up hold them back** completely, so iron-reinforced walls are the defense.
 - Next to a player, a bear bites for heavy damage every second or so.
 - A bear takes **12 spear hits** to kill _(tunable)_ and gives up and leaves after a few minutes.

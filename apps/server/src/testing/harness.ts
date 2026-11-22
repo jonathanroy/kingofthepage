@@ -55,6 +55,7 @@ export function createHarness(
 	mines: Record<string, MineSize> = {},
 	ore: Record<string, number> = {},
 	forage: Record<string, Forage> = {},
+	options: { autoSpawnCreatures?: boolean } = {},
 ) {
 	let time = 1_000_000;
 	let ids = 0;
@@ -74,7 +75,7 @@ export function createHarness(
 		newToken: () => `token${++ids}`,
 		hashToken: (t) => `hash:${t}`,
 		passwords: fakePasswords,
-		autoSpawnCreatures: false,
+		autoSpawnCreatures: options.autoSpawnCreatures ?? false,
 	});
 
 	function client(): TestClient {

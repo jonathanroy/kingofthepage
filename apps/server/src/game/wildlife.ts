@@ -4,6 +4,7 @@ import {
 	CREATURES,
 	type CreatureKind,
 	creatureMaxHp,
+	drawBearDelay,
 	meatFrom,
 	PACE,
 } from "@kotp/shared/rules";
@@ -43,7 +44,7 @@ export type WildlifeUpdate = {
 };
 
 const ANIMAL_CHECK_MS = 1000;
-const BEAR_CHECK_MS = 60_000;
+const BEAR_CHECK_MS = 5_000;
 const ANIMAL_RANGE = 20;
 
 const distance = (a: TileCoord, b: TileCoord) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
@@ -125,8 +126,13 @@ export class Wildlife {
 			this.balanceAnimals(players, now, events);
 		}
 		if (autoSpawn && now - this.lastBearCheck >= BEAR_CHECK_MS) {
+			// A long gap (first check after start, a stalled loop) counts as one check, not a burst.
+			const elapsed =
+				this.lastBearCheck === 0
+					? BEAR_CHECK_MS
+					: Math.min(now - this.lastBearCheck, 2 * BEAR_CHECK_MS);
 			this.lastBearCheck = now;
-			this.maybeSendBears(players, now, events);
+			this.maybeSendBears(players, elapsed, now, events);
 		}
 		for (const c of [...this.creatures.values()]) {
 			if (c.kind === "bear") this.updateBear(c, players, now, events, killed);
@@ -211,15 +217,36 @@ export class Wildlife {
 
 	// ---------- Zombie bears ----------
 
-	private maybeSendBears(players: PlayerState[], now: number, events: WorldEvent[]): void {
+	/** Counts down each online player's bear timer; at zero, a bear comes for them. */
+	private maybeSendBears(
+		players: PlayerState[],
+		elapsed: number,
+		now: number,
+		events: WorldEvent[],
+	): void {
 		for (const p of players) {
-			if (this.deps.random() >= CREATURES.bearChancePerMinute) continue;
+			const dueIn = (p.bearDueIn ?? drawBearDelay(this.deps.random)) - elapsed;
+			if (dueIn > 0) {
+				this.world.setBearDueIn(p.id, dueIn);
+				continue;
+			}
+			// Waits at zero while a bear is already around or there's no room for one.
+			this.world.setBearDueIn(p.id, 0);
+			if (this.bearNear(p)) continue;
 			const spot = this.findSpot(p, CREATURES.bearSpawnMin, CREATURES.bearSpawnMax, now);
 			if (!spot) continue;
+			this.world.setBearDueIn(p.id, drawBearDelay(this.deps.random));
 			const id = this.spawn("bear", spot.x, spot.y, now);
 			events.push({ kind: "creature", id, fromX: spot.x, fromY: spot.y });
 			events.push({ kind: "notice", id: p.id, notice: { kind: "bearComing" } });
 		}
+	}
+
+	private bearNear(p: PlayerState): boolean {
+		for (const c of this.creatures.values()) {
+			if (c.kind === "bear" && distance(p, c) <= CREATURES.despawnRange) return true;
+		}
+		return false;
 	}
 
 	private updateBear(

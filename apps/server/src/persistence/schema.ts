@@ -39,6 +39,7 @@ export const players = pgTable("players", {
 	tool: text("tool").notNull().default("axe"),
 	// §10 Magic shop: spending is tracked apart from gold earned, which the leaderboard ranks.
 	goldSpent: doublePrecision("gold_spent").notNull().default(0),
+	bearDueIn: ms("bear_due_in"),
 	owned: jsonb("owned").$type<string[]>().notNull().default([]),
 	look: jsonb("look").$type<Look>().notNull().default({}),
 	createdAt: ms("created_at").notNull(),

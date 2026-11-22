@@ -203,3 +203,36 @@ describe("automatic spawning", () => {
 		}
 	});
 });
+
+describe("zombie bear timing (§9)", () => {
+	const bearsSent = (c: { of: (t: "creature") => { creature: { kind: string } }[] }) =>
+		c.of("creature").filter((m) => m.creature.kind === "bear").length;
+
+	it("sends a bear when the player's online countdown runs out, then draws a new one", () => {
+		const h = createHarness({}, {}, {}, {}, { autoSpawnCreatures: true });
+		const c = h.client();
+		const id = c.join("Marco");
+		h.relocate(id, 0, 0, "down");
+		h.world.setBearDueIn(id, 9_000);
+		h.advance(5_000);
+		expect(h.world.playerById(id)?.bearDueIn).toBe(4_000);
+		expect(bearsSent(c)).toBe(0);
+		h.advance(5_000);
+		expect(bearsSent(c)).toBe(1);
+		const next = h.world.playerById(id)?.bearDueIn ?? 0;
+		expect(next).toBeGreaterThanOrEqual(CREATURES.bearDelayMinMs);
+		expect(next).toBeLessThanOrEqual(CREATURES.bearDelayMaxMs);
+	});
+
+	it("pauses while offline and keeps the countdown through a save and reload", () => {
+		const h = createHarness({}, {}, {}, {}, { autoSpawnCreatures: true });
+		const c = h.client();
+		const id = c.join("Marco");
+		h.world.setBearDueIn(id, 60_000);
+		h.game.disconnect(c.sessionId);
+		for (let i = 0; i < 30; i++) h.advance(5_000);
+		expect(h.world.playerById(id)?.bearDueIn).toBe(60_000);
+		const saved = h.world.takeWriteBatch().players.find((p) => p.id === id);
+		expect(saved?.bearDueIn).toBe(60_000);
+	});
+});
