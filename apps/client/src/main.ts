@@ -4,10 +4,14 @@ import Phaser from "phaser";
 import { Connection, tokenStorage } from "./net/connection";
 import { WorldScene } from "./render/worldScene";
 import { ClientWorld } from "./state/clientWorld";
+import { TOUCH } from "./ui/device";
 import { Hud } from "./ui/hud";
+import { TouchControls } from "./ui/touch";
 
 const world = new ClientWorld();
 const hud = new Hud();
+const touch = TOUCH ? new TouchControls() : null;
+if (TOUCH) document.body.classList.add("touch");
 let game: Phaser.Game | null = null;
 let starting = false;
 let scene: WorldScene | null = null;
@@ -53,6 +57,14 @@ async function startGame(): Promise<void> {
 		scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
 		scene: [scene],
 	});
+	if (touch) {
+		const target = scene;
+		touch.attach({
+			press: (input) => target.pressInput(input, true),
+			release: (input) => target.releaseInput(input, true),
+		});
+		touch.show();
+	}
 }
 
 const connection = new Connection({
